@@ -1,3 +1,4 @@
+import java.util.ArrayList;
 import java.util.TreeSet;
 
 public abstract class Action implements Comparable<Action> {
@@ -8,6 +9,7 @@ public abstract class Action implements Comparable<Action> {
     private GameManager manager;
     private boolean terminated = false;
     private int roundCreated;
+
     private int projectedCompletion = 1000;
 
     public TreeSet<Robo> getUnits() {
@@ -40,6 +42,7 @@ public abstract class Action implements Comparable<Action> {
 
     public void initialize(GameManager manager) {
         units = new TreeSet<>();
+        ledger = new RoboLedger();
         this.manager = manager;
         this.roundCreated = (int) manager.controller().round();
     }
@@ -56,9 +59,13 @@ public abstract class Action implements Comparable<Action> {
         return priority - other.priority;
     }
 
+    public void addRobo(Robo robo) {
+        robo.setHandler(this);
+        units.add(robo);
+    }
+
     public void remove(Robo robo) {
         units.remove(robo);
-        ledger.remove(robo);
     }
 
     public boolean isTerminated() {
@@ -69,13 +76,35 @@ public abstract class Action implements Comparable<Action> {
         this.terminated = terminated;
     }
 
+    public void transferRobo(Robo robo, Action other) {
+        other.addRobo(robo);
+        units.remove(robo);
+    }
+
+    public void transferAllRobos(Action other) {
+        ArrayList<Robo> robos = new ArrayList<>(units);
+        for (Robo robo: robos)
+            transferRobo(robo, other);
+    }
+
     public abstract ActionStatus execute();
 
     public void updateMeta() {
-        // called alongside execute to do general tasks
+        ledger.clear();
+        ArrayList<Robo> toBeRemoved = new ArrayList<>();
+        for (Robo robot: units)
+            if (robot.getRoundLastUpdated() != manager.controller().round())
+                toBeRemoved.add(robot);
+        for (Robo robot: toBeRemoved)
+            units.remove(robot);
+        for (Robo robot: units)
+            ledger.updateWithRobo(robot);
     }
 
     public void terminate() {
+        System.out.println(this);
+        for (Robo robo: getUnits())
+            robo.setHandler(null);
         if (uponTermination != null)
             uponTermination.run();
     }

@@ -18,6 +18,8 @@ public class GameManager {
     private ActionQueue otherQueue;
     private HashMap<Integer, Robo> idMap; // needs to be updated upon unit creation
     private TreeSet<Robo> unassigned;
+    private RoboLedger ledger;
+    private ArrayList<Robo> myRobots;
 
     public GameManager(GameController gc) {
         this.gc = gc;
@@ -26,6 +28,9 @@ public class GameManager {
         actionQueue = new ActionQueue();
         otherQueue = new ActionQueue();
         idMap = new HashMap<>();
+        ledger = new RoboLedger();
+        myRobots = new ArrayList<>();
+        unassigned = new TreeSet<>();
         initializeGameManager();
     }
 
@@ -35,7 +40,9 @@ public class GameManager {
 
     public List<Action> getActions() { return null; }
 
-    public int queueAction(Action action) { return 0; }
+    public void queueAction(Action action) {
+        actionQueue.add(action);
+    }
 
     public boolean hasAction(int unitid) { return false; }
 
@@ -47,12 +54,18 @@ public class GameManager {
     public GameController controller() { return gc; }
 
     public void handleUnassignedRobos() {
-        // should do stuff
+        ArrayList<Robo> robos = new ArrayList<>(unassigned);
+        for (Robo robo: robos) {
+            if (robo.getType() == UnitType.Worker) {
+                Action workerAction = new InitialWorkerAction(this, robo);
+                queueAction(workerAction);
+                unassigned.remove(robo);
+            }
+        }
     }
 
     private void initializeGameManager() {
         research();
-        VecUnit myunits = gc.myUnits();
         updateState();
         ArrayList<Robo> toBeRemoved = new ArrayList<>();
         for (Robo worker : unassigned) {
@@ -65,12 +78,11 @@ public class GameManager {
             gc.queueResearch(UnitType.Worker);
             gc.queueResearch(UnitType.Ranger);
             gc.queueResearch(UnitType.Ranger);
-            gc.queueResearch(UnitType.Mage);
-            gc.queueResearch(UnitType.Rocket);
-            gc.queueResearch(UnitType.Mage);
             gc.queueResearch(UnitType.Ranger);
-            gc.queueResearch(UnitType.Mage);
-            gc.queueResearch(UnitType.Mage);
+            gc.queueResearch(UnitType.Rocket);
+            gc.queueResearch(UnitType.Knight);
+            gc.queueResearch(UnitType.Knight);
+            gc.queueResearch(UnitType.Knight);
         }
     }
 
@@ -82,11 +94,18 @@ public class GameManager {
             actionQueue = tmpQ;
             while (otherQueue.size() > 0) {
                 Action action = otherQueue.remove();
-                ActionStatus status = action.execute();
-                if (status.terminated) {
+                action.updateMeta();
+                ActionStatus status = new ActionStatus();
+                try {
+                    status = action.execute();
+                }
+                catch (Exception e) {
+                    e.printStackTrace();
+                }
+                if (status.isTerminated()) {
                     action.terminate();
                 }
-                else {
+                else if (!status.isPaused()) {
                     actionQueue.add(action);
                 }
             }
@@ -120,8 +139,18 @@ public class GameManager {
         return Team.Red;
     }
 
+    public List<Robo> getMyRobots() {
+        return myRobots;
+    }
+
+    public RoboLedger getLedger() {
+        return ledger;
+    }
+
     public void updateState() {
         VecUnit myUnits = gc.myUnits();
+        myRobots.clear();
+        ledger.clear();
         for (int i = 0; i < myUnits.size(); ++i) {
             Unit unit = myUnits.get(i);
             if (!idMap.containsKey(unit.id())) {
@@ -131,6 +160,12 @@ public class GameManager {
             Robo robot = idMap.get(unit.id());
             robot.setLoc(unit.location());
             robot.setRoundLastUpdated(gc.round());
+            if (robot.getType() == UnitType.Factory || robot.getType() == UnitType.Rocket)
+                robot.setBlueprint(unit.structureIsBuilt() == 0);
+            if (robot.getHandler() == null)
+                unassigned.add(robot);
+            ledger.updateWithRobo(robot);
+            myRobots.add(robot);
         }
         // add units to map
     }

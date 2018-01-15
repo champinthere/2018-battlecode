@@ -8,6 +8,15 @@ public class Robo implements Comparable<Robo> {
     private Action handler;
     private int unitId;
     private UnitType type;
+    private boolean blueprint = false;
+
+    public boolean isBlueprint() {
+        return blueprint;
+    }
+
+    public void setBlueprint(boolean blueprint) {
+        this.blueprint = blueprint;
+    }
 
     public UnitType getType() {
         return type;
@@ -52,10 +61,13 @@ public class Robo implements Comparable<Robo> {
         try {
             Unit unit = manager.controller().unit(unitId);
             this.loc = unit.location();
+            this.type = unit.unitType();
             if (loc.isOnMap()) {
                 this.nearbyFriendlyUnits = manager.controller().senseNearbyUnitsByTeam(loc.mapLocation(), unit.visionRange(), manager.getTeam());
                 this.nearbyEnemyUnits = manager.controller().senseNearbyUnitsByTeam(loc.mapLocation(), unit.visionRange(), manager.getOpposingTeam());
             }
+            if (type == UnitType.Factory || type == UnitType.Rocket)
+                blueprint = (unit.structureIsBuilt() == 0);
         }
         catch (Exception e) {
             System.out.format("%s thrown in Robo constructor", e.getClass().toString());
@@ -88,5 +100,18 @@ public class Robo implements Comparable<Robo> {
 
     public void setRoundLastUpdated(long roundLastUpdated) {
         this.roundLastUpdated = roundLastUpdated;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (!(other instanceof Robo))
+            return false;
+        Robo otherRobot = (Robo) other;
+        return (unitId == otherRobot.unitId);
+    }
+
+    @Override
+    public int hashCode() {
+        return new Integer(unitId).hashCode();
     }
 }
