@@ -14,7 +14,7 @@ public class InitialWorkerAction extends Action {
     }
 
     public ActionStatus execute() {
-        System.out.println("InitialWorkerAction Executing");
+//        System.out.println("InitialWorkerAction Executing");
         if (getUnits().size() == 0)
             return new ActionStatus(false, true);
 

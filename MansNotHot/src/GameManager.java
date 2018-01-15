@@ -87,6 +87,12 @@ public class GameManager {
     }
 
     public void gameStep() {
+        if (gc.round() == 749) {
+            System.out.println("=====================TEST===========================");
+            StaticPath path = mapAnalyzer.getStaticPath(new MapLocation(getPlanet(), 0, 0), new MapLocation(getPlanet(), 0, 10));
+            for (StaticPath p = path; p != null; p = p.getNext())
+                System.out.println(p.getLoc().getX() + " " + p.getLoc().getY());
+        }
         try {
             updateState();
             ActionQueue tmpQ = otherQueue;
@@ -100,7 +106,7 @@ public class GameManager {
                     status = action.execute();
                 }
                 catch (Exception e) {
-                    e.printStackTrace();
+//                    e.printStackTrace();
                 }
                 if (status.isTerminated()) {
                     action.terminate();
