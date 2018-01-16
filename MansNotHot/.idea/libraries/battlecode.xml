@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="battlecode">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/src/libs/battlecode.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$PROJECT_DIR$/src/libs/battlecode.jar!/" />
+    </SOURCES>
+  </library>
+</component>
