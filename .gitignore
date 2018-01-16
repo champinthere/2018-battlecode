@@ -1,0 +1,6 @@
+# Production files
+/MansNotHot/out/
+/MansNotHot/.idea/
+
+# Battlecode run files
+/MansNotHot/src/run.*
