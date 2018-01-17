@@ -43,4 +43,14 @@ public class StaticPath {
         this.loc = loc;
         this.next = next;
     }
+
+    public String toString() {
+        String result = "";
+        for (StaticPath s = this; s != null; s = s.getNext()) {
+            int sx = s.getLoc().getX();
+            int sy = s.getLoc().getY();
+            result += ((s == this ? "" : " -> ") + "(" + sx + ", " + sy + ")");
+        }
+        return result;
+    }
 }

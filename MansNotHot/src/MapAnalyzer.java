@@ -45,6 +45,7 @@ public class MapAnalyzer {
         width = (int) earthMap.getWidth();
         height = (int) earthMap.getHeight();
         unitMap = new Unit[width][height];
+        // need to initialize Asteroid Pattern
     }
 
     public MapLocation getNearbyDefensiveLocation(MapLocation loc) {
@@ -57,13 +58,12 @@ public class MapAnalyzer {
             for (int j = 0; j < height; ++j)
                 unitMap[i][j] = null;
         for (int i = 0; i < width; ++i) {
-            for (int j = 0; j < height; ++i) {
+            for (int j = 0; j < height; ++j) {
                 try {
                     unitMap[i][j] = manager.controller().senseUnitAtLocation(new MapLocation(manager.getPlanet(), i, j));
                 }
                 catch (Exception e) {}
             }
-
         }
     }
 
@@ -102,6 +102,11 @@ public class MapAnalyzer {
             Coordinate c = (Coordinate) o;
             return (c.x == x && c.y == y);
         }
+
+        @Override
+        public String toString() {
+            return String.format("(%d, %d)", x, y);
+        }
     }
 
     private class PathNode {
@@ -134,12 +139,31 @@ public class MapAnalyzer {
                 PathNode node = result.get(c);
                 for (int k = 0; k < adjLocations.size(); ++k) {
                     Coordinate f = new Coordinate(adjLocations.get(k));
-                    if (result.get(f).passable)
+                    if (result.get(f).passable && !f.equals(c))
                         node.adj.add(result.get(f));
                 }
             }
         }
         return result;
+    }
+
+    private void printPathNodeGraph() {
+        Map<Coordinate, PathNode> g = getPathNodeGraph();
+        for (int j = height - 1; j >= 0; j--) {
+            for (int i = 0; i < width; ++i) {
+                PathNode n = g.get(new Coordinate(i, j));
+                System.out.print((n.passable ? 1 : 0) + " ");
+            }
+            System.out.println();
+        }
+        System.out.println("=================================");
+        for (int j = height - 1; j >= 0; j--) {
+            for (int i = 0; i < width; ++i) {
+                PathNode n = g.get(new Coordinate(i, j));
+                System.out.print((n.adj.size()) + " ");
+            }
+            System.out.println();
+        }
     }
 
     public StaticPath getStaticPath(MapLocation start, MapLocation finish) {
@@ -149,12 +173,14 @@ public class MapAnalyzer {
         PriorityQueue<StaticPath.StaticPathEntry> pq = new PriorityQueue<>();
         StaticPath startPath = new StaticPath(start);
         HashSet<Coordinate> visited = new HashSet<Coordinate>();
-        visited.add(begin);
         StaticPath.StaticPathEntry b = new StaticPath.StaticPathEntry(StaticPath.getCost(start, finish), startPath);
         pq.add(b);
         while(!pq.isEmpty()) {
             StaticPath.StaticPathEntry e = pq.remove();
             Coordinate c = new Coordinate(e.path.getLoc());
+            if (visited.contains(c))
+                continue;
+            visited.add(c);
             if (c.equals(end)) {
                 StaticPath p = e.path;
                 StaticPath t = p.getNext();
@@ -165,12 +191,8 @@ public class MapAnalyzer {
                     p = t;
                     t = r;
                 }
-                System.out.println("StaticPath found successfully");
                 return p.getNext();
             }
-            if (visited.contains(c))
-                continue;
-            visited.add(c);
             double g = e.cost - StaticPath.getCost(e.path.getLoc(), finish);
             PathNode node = graph.get(c);
             for (PathNode nearby: node.adj) {
@@ -182,7 +204,6 @@ public class MapAnalyzer {
                 }
             }
         }
-        System.out.println("Path there was an error");
         return null;
     }
 

@@ -13,11 +13,11 @@ public class HarvestAction extends Action {
 
     @Override
     public ActionStatus execute() {
-        if (getUnits().size() != 1 || getManager().controller().round() - getRoundCreated() > 34 || !(getUnits().first().equals(singleUnit)))
+        if (getUnits().size() != 1 || getManager().controller().round() - getRoundCreated() > 50 || !(getUnits().first().equals(singleUnit)))
             return new ActionStatus(false, true);
         Robo worker = singleUnit;
         if (worker.getLoc().mapLocation().distanceSquaredTo(karboniteLocation) > 2)
-            throw new IllegalArgumentException("Worker not positioned close enough to karbonite");
+            return new ActionStatus(false, true);
         if (getManager().controller().karboniteAt(karboniteLocation) == 0)
             return new ActionStatus(true, true);
 

@@ -1,12 +1,19 @@
-import bc.Direction;
-import bc.MapLocation;
-import bc.UnitType;
-import bc.VecMapLocation;
+import bc.*;
 
 import java.util.ArrayList;
 
 public class InitialWorkerAction extends Action {
+    private static int[][] harvestClaimed;
+    private static int[][] numHarvesters;
+
     public InitialWorkerAction(GameManager gm, Robo robo) {
+        if (harvestClaimed == null) {
+            harvestClaimed = new int[gm.getMapAnalyzer().getWidth()][gm.getMapAnalyzer().getHeight()];
+            numHarvesters = new int[gm.getMapAnalyzer().getWidth()][gm.getMapAnalyzer().getHeight()];
+        }
+        for (int i = 0; i < harvestClaimed.length; ++i)
+            for (int j = 0; j < harvestClaimed[0].length; ++j)
+                harvestClaimed[i][j] = Integer.MIN_VALUE;
         if (robo.getType() != UnitType.Worker)
             throw new IllegalArgumentException("InitialWorkerAction requires worker");
         initialize(gm);
@@ -32,10 +39,10 @@ public class InitialWorkerAction extends Action {
 //        else if (canBuildRocket(worker) && shouldBuildRocket(worker)) {
 //            buildRocket(worker);
 //        }
-//        else if (isNearbyKarboniteDeposit(worker)) {
-//            harvestNearbyKarboniteDeposit(worker);
-//            return new ActionStatus(true, false, true);
-//        }
+        else if (isNearbyKarboniteDeposit(worker)) {
+            harvestNearbyKarboniteDeposit(worker);
+            return new ActionStatus(true, false, true);
+        }
         else {
             moveRandomDirection(worker);
         }
@@ -83,35 +90,42 @@ public class InitialWorkerAction extends Action {
     }
 
     public boolean shouldReplicate(Robo worker) {
-        return getManager().getLedger().getNumWorkers() < 24;
+        return getManager().getLedger().getNumWorkers() < 8;
     }
 
     public boolean isNearbyKarboniteDeposit(Robo worker) {
-        long nearbyRadius = 200l;
+        long nearbyRadius = 201l;
         MapLocation workerLocation = worker.getLoc().mapLocation();
-        VecMapLocation nearbyLocations = getManager().controller().allLocationsWithin(workerLocation, nearbyRadius);
+        GameController gc = getManager().controller();
+        VecMapLocation nearbyLocations = gc.allLocationsWithin(workerLocation, nearbyRadius);
         for (int i = 0; i < nearbyLocations.size(); ++i) {
             MapLocation m = nearbyLocations.get(i);
             try {
-                if (getManager().controller().karboniteAt(m) > 0)
+                if (getManager().controller().karboniteAt(m) > 0 &&
+                        ((gc.round() - harvestClaimed[m.getX()][m.getY()]) > 18 || numHarvesters[m.getX()][m.getY()] < 2))
                     return true;
             }
-            catch (Exception e) {};
+            catch (Exception e) {}
         }
         return false;
     }
 
     public void harvestNearbyKarboniteDeposit(Robo worker) {
-        long nearbyRadius = 200l;
+        long nearbyRadius = 201l;
         MapLocation workerLocation = worker.getLoc().mapLocation();
         MapLocation karboniteLocation = null;
-        VecMapLocation nearbyLocations = getManager().controller().allLocationsWithin(workerLocation, nearbyRadius);
+        long dsquared = Integer.MAX_VALUE;
+        GameController gc = getManager().controller();
+        VecMapLocation nearbyLocations = gc.allLocationsWithin(workerLocation, nearbyRadius);
         for (int i = 0; i < nearbyLocations.size(); ++i) {
             MapLocation m = nearbyLocations.get(i);
             try {
-                if (getManager().controller().karboniteAt(m) > 0) {
-                    karboniteLocation = m;
-                    break;
+                if (getManager().controller().karboniteAt(m) > 0
+                        && ((gc.round() - harvestClaimed[m.getX()][m.getY()]) > 18 || numHarvesters[m.getX()][m.getY()] < 2)) {
+                    if (workerLocation.distanceSquaredTo(m) < dsquared) {
+                        karboniteLocation = m;
+                        dsquared = workerLocation.distanceSquaredTo(m);
+                    }
                 }
             }
             catch (Exception e) {}
@@ -119,6 +133,8 @@ public class InitialWorkerAction extends Action {
         Action workerAction = this;
         MoveAction mover = new MoveAction(getManager(), worker, karboniteLocation);
         HarvestAction harvester = new HarvestAction(getManager(), worker, karboniteLocation);
+        harvestClaimed[karboniteLocation.getX()][karboniteLocation.getY()] = (int) gc.round();
+        numHarvesters[karboniteLocation.getX()][karboniteLocation.getY()] = (numHarvesters[karboniteLocation.getX()][karboniteLocation.getY()] < 2 ? numHarvesters[karboniteLocation.getX()][karboniteLocation.getY()] + 1 : 1);
         mover.addRobo(worker);
         getManager().queueAction(mover);
         mover.setUponTermination(() -> {
