@@ -61,6 +61,16 @@ public class GameManager {
                 queueAction(workerAction);
                 unassigned.remove(robo);
             }
+            else if (robo.getType() == UnitType.Factory) {
+                Action factoryAction = new InitialFactoryAction(this, robo);
+                queueAction(factoryAction);
+                unassigned.remove(robo);
+            }
+            else if (robo.getType() == UnitType.Ranger) {
+                Action rangerAction = new InitialRangerAction(this, robo);
+                queueAction(rangerAction);
+                unassigned.remove(robo);
+            }
         }
     }
 
@@ -145,6 +155,23 @@ public class GameManager {
 
     public RoboLedger getLedger() {
         return ledger;
+    }
+
+    public Robo addRobo(int id) {
+        Unit unit = gc.unit(id);
+        if (!idMap.containsKey(unit.id())) {
+            idMap.put(unit.id(), new Robo(this, unit.id()));
+            unassigned.add(idMap.get(unit.id()));
+        }
+        Robo robot = idMap.get(unit.id());
+        robot.setLoc(unit.location());
+        robot.setRoundLastUpdated(gc.round());
+        if (robot.getType() == UnitType.Factory || robot.getType() == UnitType.Rocket)
+            robot.setBlueprint(unit.structureIsBuilt() == 0);
+
+        ledger.updateWithRobo(robot);
+        myRobots.add(robot);
+        return robot;
     }
 
     public void updateState() {

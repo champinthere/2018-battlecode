@@ -1,12 +1,16 @@
 import bc.*;
 
 import java.util.ArrayList;
+import java.util.TreeMap;
 
 public class InitialWorkerAction extends Action {
     private static int[][] harvestClaimed;
     private static int[][] numHarvesters;
+    private static TreeMap<Robo, Integer> numBuilders;
 
     public InitialWorkerAction(GameManager gm, Robo robo) {
+        if (numBuilders == null)
+            numBuilders = new TreeMap<>();
         if (harvestClaimed == null) {
             harvestClaimed = new int[gm.getMapAnalyzer().getWidth()][gm.getMapAnalyzer().getHeight()];
             numHarvesters = new int[gm.getMapAnalyzer().getWidth()][gm.getMapAnalyzer().getHeight()];
@@ -26,16 +30,19 @@ public class InitialWorkerAction extends Action {
             return new ActionStatus(false, true);
 
         Robo worker = getUnits().first();
-
+        Robo blueprint = nearbyBlueprint(worker);
+//        System.out.println("=============================: " + getManager().getLedger().getBlueprints().size());
         if (shouldReplicate(worker) && canReplicate(worker)) {
             replicate(worker);
         }
-//        else if (isNearbyBlueprint(worker)) {
-//            buildNearbyBlueprint(worker);
-//        }
-//        else if (canBuildFactory(worker) && shouldBuildFactory(worker)) {
-//            buildFactory(worker);
-//        }
+        else if (blueprint != null) {
+            buildBlueprint(worker, blueprint);
+            return new ActionStatus(true, false, true);
+        }
+        else if (canBlueprintFactory(worker) && shouldBlueprintFactory(worker)) {
+            blueprintFactory(worker);
+            return new ActionStatus(true, false, true);
+        }
 //        else if (canBuildRocket(worker) && shouldBuildRocket(worker)) {
 //            buildRocket(worker);
 //        }
@@ -52,8 +59,54 @@ public class InitialWorkerAction extends Action {
         return new ActionStatus();
     }
 
-    public MapLocation checkForKryptoniteDeposit() {
-        return null;
+    public Robo nearbyBlueprint(Robo worker) {
+        Robo result = null;
+        long dsq = Integer.MAX_VALUE;
+        for (Robo blueprint: getManager().getLedger().getBlueprints()) {
+            long testsq = worker.getLoc().mapLocation().distanceSquaredTo(blueprint.getLoc().mapLocation());
+            if (numBuilders.containsKey(blueprint) && numBuilders.get(blueprint) >= 40)
+                System.out.println("FULL $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+            if (testsq <= 200 &&
+                    (!numBuilders.containsKey(blueprint) || numBuilders.get(blueprint) < 40)) {
+                if (testsq < dsq) {
+                    result = blueprint;
+                }
+            }
+        }
+        return result;
+    }
+
+    public void buildBlueprint(Robo worker, Robo blueprint) {
+        //todo
+        if (!numBuilders.containsKey(blueprint))
+            numBuilders.put(blueprint, 0);
+        numBuilders.put(blueprint, numBuilders.get(blueprint) + 1);
+
+        Action workerAction = this;
+        MapLocation workerLocation = worker.getLoc().mapLocation();
+        MapLocation blueprintLocation = blueprint.getLoc().mapLocation();
+        MoveAction mover = new MoveAction(getManager(), worker, blueprintLocation);
+        BuildBlueprintAction builder = new BuildBlueprintAction(getManager(), worker, blueprint);
+        if (workerLocation.distanceSquaredTo(blueprintLocation) > 2) {
+            mover.addRobo(worker);
+            getManager().queueAction(mover);
+            mover.setUponTermination(() -> {
+                builder.addRobo(worker);
+                getManager().queueAction(builder);
+                builder.setUponTermination(() -> {
+                    workerAction.addRobo(worker);
+                    getManager().queueAction(workerAction);
+                });
+            });
+        }
+        else {
+            builder.addRobo(worker);
+            getManager().queueAction(builder);
+            builder.setUponTermination(() -> {
+                workerAction.addRobo(worker);
+                getManager().queueAction(workerAction);
+            });
+        }
     }
 
     public boolean canReplicate(Robo worker) {
@@ -91,6 +144,57 @@ public class InitialWorkerAction extends Action {
 
     public boolean shouldReplicate(Robo worker) {
         return getManager().getLedger().getNumWorkers() < 8;
+    }
+
+    public boolean canBlueprintFactory(Robo worker) {
+        MapLocation workerLocation = worker.getLoc().mapLocation();
+        VecMapLocation nearby = getManager().controller().allLocationsWithin(workerLocation, 2);
+        MapLocation choice = null;
+        Direction toChoice = Direction.Center;
+        GameController gc = getManager().controller();
+        for (int i = 0; i < nearby.size(); ++i) {
+            MapLocation m = nearby.get(i);
+            if (getManager().getMapAnalyzer().isPassable(m)) {
+                choice = m;
+                toChoice = workerLocation.directionTo(choice);
+                break;
+            }
+        }
+        if (choice == null) return false;
+        return gc.canBlueprint(worker.getUnitId(), UnitType.Factory, toChoice);
+    }
+
+    public Robo blueprintFactory(Robo worker) {
+        MapLocation workerLocation = worker.getLoc().mapLocation();
+        VecMapLocation nearby = getManager().controller().allLocationsWithin(workerLocation, 2);
+        MapLocation choice = null;
+        Direction toChoice = Direction.Center;
+        GameController gc = getManager().controller();
+        for (int i = 0; i < nearby.size(); ++i) {
+            MapLocation m = nearby.get(i);
+            if (getManager().getMapAnalyzer().isPassable(m)) {
+                choice = m;
+                toChoice = workerLocation.directionTo(choice);
+                break;
+            }
+        }
+        gc.blueprint(worker.getUnitId(), UnitType.Factory, toChoice);
+        Robo blueprint = getManager().addRobo(gc.senseUnitAtLocation(choice).id());
+        Action workerAction = this;
+        MapLocation blueprintLocation = blueprint.getLoc().mapLocation();
+        BuildBlueprintAction builder = new BuildBlueprintAction(getManager(), worker, blueprint);
+        builder.addRobo(worker);
+        getManager().queueAction(builder);
+        builder.setUponTermination(() -> {
+            System.out.println("FACTORY BUILT!!!");
+            workerAction.addRobo(worker);
+            getManager().queueAction(workerAction);
+        });
+        return blueprint;
+    }
+
+    public boolean shouldBlueprintFactory(Robo worker) {
+        return getManager().getLedger().getNumFactories() + getManager().getLedger().getNumFactoryBlueprints() < 4;
     }
 
     public boolean isNearbyKarboniteDeposit(Robo worker) {

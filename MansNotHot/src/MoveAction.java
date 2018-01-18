@@ -36,17 +36,19 @@ public class MoveAction extends Action {
             }
             else {
                 if (start.distanceSquaredTo(destination) > 32) {
-                    System.out.println("COLLISION======================================================================");
                     StaticPath other = path.getNext().getNext().getNext();
                     path = getManager().getMapAnalyzer().getStaticPath(singleUnit.getLoc().mapLocation(), other.getLoc());
                     StaticPath element = path;
+                    if (element == null)
+                        return new ActionStatus(false, true);
                     while (element.getNext() != null)
                         element = element.getNext();
                     element.setNext(other.getNext());
                 }
                 else {
-                    System.out.println("COLLISION======================================================================");
                     path = getManager().getMapAnalyzer().getStaticPath(singleUnit.getLoc().mapLocation(), destination);
+                    if (path == null)
+                        return new ActionStatus(false, true);
                 }
                 direction = start.directionTo(path.getLoc());
                 if (getManager().controller().canMove(singleUnit.getUnitId(), direction)) {

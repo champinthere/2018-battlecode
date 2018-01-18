@@ -2,7 +2,6 @@
 /MansNotHot/out/
 /MansNotHot/.idea/**/workspace.xml
 MansNotHot/.idea/misc.xml
-MansNotHot/MansNotHot.iml
 
 # Battlecode run files
 /MansNotHot/src/run.*
