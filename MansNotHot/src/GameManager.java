@@ -16,11 +16,11 @@ public class GameManager {
     private GameMind mind;
     private ActionQueue actionQueue;
     private ActionQueue otherQueue;
-    private HashMap<Integer, Robo> idMap; // needs to be updated upon unit creation
-    private TreeSet<Robo> unassigned;
-    private RoboLedger ledger;
-    private ArrayList<Robo> myRobots;
+    private HashMap<Integer, Unit> idMap; // HashMap of UnitID to Units
+    private HashSet<Integer> assigned; // ArrayList of Units that are currently not assigned to Actions
+    private RoboLedger ledger; // Ledger of information about current units
 
+    // Constructor
     public GameManager(GameController gc) {
         this.gc = gc;
         planet = gc.planet();
@@ -29,61 +29,16 @@ public class GameManager {
         otherQueue = new ActionQueue();
         idMap = new HashMap<>();
         ledger = new RoboLedger();
-        myRobots = new ArrayList<>();
-        unassigned = new TreeSet<>();
+        assigned = new HashSet<>();
         initializeGameManager();
     }
 
-    public Map<Integer, Robo> getIdMap() {
-        return idMap;
-    }
-
-    public List<Action> getActions() { return null; }
-
-    public void queueAction(Action action) {
-        actionQueue.add(action);
-    }
-
-    public boolean hasAction(int unitid) { return false; }
-
-    // returns null if no Action exists
-    public Action getAction(int unitid) {
-        return null;
-    }
-
-    public GameController controller() { return gc; }
-
-    public void handleUnassignedRobos() {
-        ArrayList<Robo> robos = new ArrayList<>(unassigned);
-        for (Robo robo: robos) {
-            if (robo.getType() == UnitType.Worker) {
-                Action workerAction = new InitialWorkerAction(this, robo);
-                queueAction(workerAction);
-                unassigned.remove(robo);
-            }
-            else if (robo.getType() == UnitType.Factory) {
-                Action factoryAction = new InitialFactoryAction(this, robo);
-                queueAction(factoryAction);
-                unassigned.remove(robo);
-            }
-            else if (robo.getType() == UnitType.Ranger) {
-                Action rangerAction = new InitialRangerAction(this, robo);
-                queueAction(rangerAction);
-                unassigned.remove(robo);
-            }
-        }
-    }
-
     private void initializeGameManager() {
-        research();
-        updateState();
-        ArrayList<Robo> toBeRemoved = new ArrayList<>();
-        for (Robo worker : unassigned) {
-            queueAction(new InitialWorkerAction(this, worker));
-        }
+        research(); // queue initial research targets
+        updateState(); // get initial state and assign initial actions
     }
 
-    private void research() {
+    private void research() { // create research queue
         if (planet == Planet.Earth) {
             gc.queueResearch(UnitType.Worker);
             gc.queueResearch(UnitType.Ranger);
@@ -96,12 +51,53 @@ public class GameManager {
         }
     }
 
+    private void updateState() {
+        VecUnit myUnits = gc.myUnits();
+        ledger.clear();
+        idMap.clear();
+        for (int i = 0; i < myUnits.size(); ++i) {
+            Unit unit = myUnits.get(i);
+            idMap.put(unit.id(), unit); // update idMap with unit
+            ledger.updateWithUnit(unit); // update ledger with unit
+            if(!assigned.contains(unit.id())) { // if unit is not assigned an action...
+                handleUnassignedUnit(unit);     // ...assign an action to it
+            }
+        }
+        mapAnalyzer.updateWithUnitPositions(); // add units to map
+    }
+
+    public void handleUnassignedUnit(Unit unit) {
+        if (unit.unitType() == UnitType.Worker) {
+            Action workerAction = new InitialWorkerAction(this, robo);
+            queueAction(workerAction);
+        }
+        else if (unit.unitType() == UnitType.Factory) {
+            Action factoryAction = new InitialFactoryAction(this, robo);
+            queueAction(factoryAction);
+        }
+        else if (unit.unitType() == UnitType.Ranger) {
+            Action rangerAction = new InitialRangerAction(this, robo);
+            queueAction(rangerAction);
+        }
+        else {
+            System.out.format("Unexpected unit type: %d\n", unit.unitType());
+        }
+        assigned.add(unit.id());
+    }
+
+    // Overall turn method
     public void gameStep() {
         try {
-            updateState();
+            updateState(); // update with new state and assign new actions
+
+            // swap current actions and other
+            // otherQueue is currently empty while actionQueue holds all current queued actions
+            // we will switch them and then perform each action (now in otherQueue) and enqueue
+            // the resulting actions (to actionQueue) to be considered in the next turn
             ActionQueue tmpQ = otherQueue;
             otherQueue = actionQueue;
             actionQueue = tmpQ;
+
             while (otherQueue.size() > 0) {
                 Action action = otherQueue.remove();
                 action.updateMeta();
@@ -119,19 +115,18 @@ public class GameManager {
                     actionQueue.add(action);
                 }
             }
-            handleUnassignedRobos();
         }
-        catch (Exception e) {
+        catch (Exception e) { // print error
             e.printStackTrace();
         }
-        finally {
+        finally { // debug information
             System.out.format("Team %s on Planet %s Completed Round %d\n",
                     (getTeam() == Team.Red ? "Red" : "Blue"),
                     (getPlanet() == Planet.Earth ? "Earth" : "Mars"),
                     gc.round());
             System.out.flush();
             System.err.flush();
-            gc.nextTurn();
+            gc.nextTurn(); // proceed to next turn
         }
     }
 
@@ -149,52 +144,26 @@ public class GameManager {
         return Team.Red;
     }
 
-    public List<Robo> getMyRobots() {
-        return myRobots;
-    }
-
     public RoboLedger getLedger() {
         return ledger;
     }
 
-    public Robo addRobo(int id) {
-        Unit unit = gc.unit(id);
-        if (!idMap.containsKey(unit.id())) {
-            idMap.put(unit.id(), new Robo(this, unit.id()));
-            unassigned.add(idMap.get(unit.id()));
-        }
-        Robo robot = idMap.get(unit.id());
-        robot.setLoc(unit.location());
-        robot.setRoundLastUpdated(gc.round());
-        if (robot.getType() == UnitType.Factory || robot.getType() == UnitType.Rocket)
-            robot.setBlueprint(unit.structureIsBuilt() == 0);
-
-        ledger.updateWithRobo(robot);
-        myRobots.add(robot);
-        return robot;
+    public Map<Integer, Unit> getIdMap() {
+        return idMap;
     }
 
-    public void updateState() {
-        VecUnit myUnits = gc.myUnits();
-        myRobots.clear();
-        ledger.clear();
-        for (int i = 0; i < myUnits.size(); ++i) {
-            Unit unit = myUnits.get(i);
-            if (!idMap.containsKey(unit.id())) {
-                idMap.put(unit.id(), new Robo(this, unit.id()));
-                unassigned.add(idMap.get(unit.id()));
-            }
-            Robo robot = idMap.get(unit.id());
-            robot.setLoc(unit.location());
-            robot.setRoundLastUpdated(gc.round());
-            if (robot.getType() == UnitType.Factory || robot.getType() == UnitType.Rocket)
-                robot.setBlueprint(unit.structureIsBuilt() == 0);
-            if (robot.getHandler() == null)
-                unassigned.add(robot);
-            ledger.updateWithRobo(robot);
-            myRobots.add(robot);
-        }
-        mapAnalyzer.updateWithUnitPositions();
-        // add units to map
+    public List<Action> getActions() { return null; }
+
+    public void queueAction(Action action) {
+        actionQueue.add(action);
     }
+
+    public boolean hasAction(int unitid) { return false; }
+
+    // returns null if no Action exists
+    public Action getAction(int unitid) {
+        return null;
+    }
+
+    public GameController controller() { return gc; }
 }

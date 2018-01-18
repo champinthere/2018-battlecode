@@ -1,6 +1,7 @@
 import bc.Unit;
 import bc.UnitType;
 
+import java.util.HashSet;
 import java.util.TreeSet;
 
 public class RoboLedger {
@@ -13,10 +14,10 @@ public class RoboLedger {
     private int numFactoryBlueprints;
     private int numRockets;
     private int numRocketBlueprints;
-    private TreeSet<Robo> blueprints; // mutability should not matter because want updated list on new turns anyway
+    private HashSet<Integer> blueprints; // ids of blueprints
 
     public RoboLedger() {
-        blueprints = new TreeSet<>();
+        blueprints = new HashSet<>();
     }
 
     public int getCount(UnitType type) {
@@ -32,62 +33,8 @@ public class RoboLedger {
         return -1;
     }
 
-//    public void updateWithUnit(Unit unit) {
-//        UnitType type = unit.unitType();
-//        switch (type) {
-//            case Worker:
-//                ++numWorkers;
-//                break;
-//            case Knight:
-//                ++numKnights;
-//                break;
-//            case Ranger:
-//                ++numRangers;
-//                break;
-//            case Mage:
-//                ++numMages;
-//                break;
-//            case Healer:
-//                ++numHealers;
-//                break;
-//            case Factory:
-//                ++numFactories;
-//                break;
-//            case Rocket:
-//                ++numRockets;
-//                break;
-//        }
-//    }
-
-    public void removeUnit(Unit unit) {
+    public void updateWithUnit(Unit unit) {
         UnitType type = unit.unitType();
-        switch (type) {
-            case Worker:
-                --numWorkers;
-                break;
-            case Knight:
-                --numKnights;
-                break;
-            case Ranger:
-                --numRangers;
-                break;
-            case Mage:
-                --numMages;
-                break;
-            case Healer:
-                --numHealers;
-                break;
-            case Factory:
-                --numFactories;
-                break;
-            case Rocket:
-                --numRockets;
-                break;
-        }
-    }
-
-    public void updateWithRobo(Robo robo) {
-        UnitType type = robo.getType();
         switch (type) {
             case Worker:
                 ++numWorkers;
@@ -105,27 +52,26 @@ public class RoboLedger {
                 ++numHealers;
                 break;
             case Factory:
-                ++numFactories;
+                if(unit.structureIsBuilt()==0) {
+                    ++numFactoryBlueprints;
+                    blueprints.add(unit.id());
+                }
+                else
+                    ++numFactories;
                 break;
             case Rocket:
-                ++numRockets;
+                if(unit.structureIsBuilt()==0) {
+                    ++numRocketBlueprints;
+                    blueprints.add(unit.id());
+                }
+                else
+                    ++numRockets;
                 break;
-        }
-        if (robo.isBlueprint()) {
-            blueprints.add(robo);
-            if (type == UnitType.Factory) {
-                --numFactories;
-                ++numFactoryBlueprints;
-            }
-            if (type == UnitType.Rocket) {
-                --numRockets;
-                ++numRocketBlueprints;
-            }
         }
     }
 
-    public void removeRobo(Robo robo) {
-        UnitType type = robo.getType();
+    public void removeUnit(Unit unit) {
+        UnitType type = unit.unitType();
         switch (type) {
             case Worker:
                 --numWorkers;
@@ -163,6 +109,8 @@ public class RoboLedger {
         numRocketBlueprints = 0;
         blueprints.clear();
     }
+
+    public HashSet<Integer> getBlueprints() { return blueprints; }
 
     public int getNumWorkers() {
         return numWorkers;
@@ -235,7 +183,4 @@ public class RoboLedger {
     public void setNumRocketBlueprints(int numRocketBlueprints) {
         this.numRocketBlueprints = numRocketBlueprints;
     }
-
-    public TreeSet<Robo> getBlueprints() { return blueprints; }
-
 }

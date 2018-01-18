@@ -1,6 +1,7 @@
 # Production files
 /MansNotHot/out/
 /MansNotHot/.idea/**/workspace.xml
+/MansNotHot/MansNotHot.iml
 MansNotHot/.idea/misc.xml
 
 # Battlecode run files

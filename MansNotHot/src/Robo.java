@@ -3,13 +3,18 @@ import bc.Unit;
 import bc.UnitType;
 import bc.VecUnit;
 
-public class Robo implements Comparable<Robo> {
+public class Robo {
+    private Unit unit;
     private GameManager manager;
     private Action handler;
     private int unitId;
     private UnitType type;
     private boolean blueprint = false;
 
+    @Override
+    public int hashCode() {
+        return Integer.valueOf(unitId).hashCode();
+    }
     public boolean isBlueprint() {
         return blueprint;
     }
@@ -82,6 +87,8 @@ public class Robo implements Comparable<Robo> {
         return unitId;
     }
 
+
+    // Get/Set Action for Robo
     public Action getHandler() {
         return handler;
     }
@@ -90,28 +97,12 @@ public class Robo implements Comparable<Robo> {
         this.handler = handler;
     }
 
-    public int compareTo(Robo other) {
-        return this.unitId - other.unitId;
-    }
-
+    // Get/Set last updated round for Robo
     public long getRoundLastUpdated() {
         return roundLastUpdated;
     }
 
     public void setRoundLastUpdated(long roundLastUpdated) {
         this.roundLastUpdated = roundLastUpdated;
-    }
-
-    @Override
-    public boolean equals(Object other) {
-        if (!(other instanceof Robo))
-            return false;
-        Robo otherRobot = (Robo) other;
-        return (unitId == otherRobot.unitId);
-    }
-
-    @Override
-    public int hashCode() {
-        return new Integer(unitId).hashCode();
     }
 }
