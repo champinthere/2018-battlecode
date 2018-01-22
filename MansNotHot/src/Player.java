@@ -318,6 +318,8 @@ public class Player {
     Ledger opposition;
     Metric metric;
     RangerNearestNeighbor rnn;
+    Random rnd;
+
 
     public void updateLocation(int id, MapLocation oldpos, MapLocation newpos) {
         Unit u = gc.unit(id);
@@ -330,6 +332,7 @@ public class Player {
 
     public Player(GameController gc) {
         System.out.println("Player Initializing");
+        rnd = new Random(234892352);
         this.gc = gc;
         mapdirs = Arrays.asList(mapdirections);
         planet = gc.planet();
@@ -523,9 +526,11 @@ public class Player {
                         else {
                             ArrayList<Direction> around = availableDirections(wloc);
                             if (around.size() > 0) {
-                                Direction selected = around.get((int) (Math.random() * around.size()));
-                                if (gc.canMove(id, selected))
+                                Direction selected = around.get((int) (rnd.nextDouble() * around.size()));
+                                if (gc.canMove(id, selected)) {
                                     gc.moveRobot(id, selected);
+                                    updateLocation(id, wloc, wloc.add(selected));
+                                }
                             }
                         }
                     }
@@ -538,7 +543,7 @@ public class Player {
                 else {
                     ArrayList<Direction> around = availableDirections(wloc);
                     if (around.size() > 0) {
-                        Direction selected = around.get((int) (Math.random() * around.size()));
+                        Direction selected = around.get((int) (rnd.nextDouble() * around.size()));
                         if (gc.canMove(id, selected)) {
                             gc.moveRobot(id, selected);
                             updateLocation(id, wloc, wloc.add(selected));
@@ -567,17 +572,19 @@ public class Player {
                     gc.unload(id, dirs.get(di));
                 }
                 catch (Exception e) {
-                    System.out.println("Exception ========================");
+                    System.out.println(gc.round() + " Exception ========================");
                     System.out.println(mapdirs.indexOf(dirs.get(di)));
                     System.out.println(floc.getX() + " " + floc.getY());
                     int fx = floc.getX(), fy = floc.getY();
                     for (int j = 2; j >= -2; --j) {
                         for (int i = -2; i <= 2; ++i) {
                             if (fx + i >= 0 && fx + i < width && fy + j >= 0 && fy + j < height)
-                                System.out.print(isPassable(new MapLocation(planet, fx + i, fy + j)) + " ");
+                                System.out.print(isPassable(new MapLocation(planet, fx + i, fy + j)) ? "op " : "po ");
                         }
                         System.out.println();
                     }
+                    Unit testUnit = gc.senseUnitAtLocation(floc.add(dirs.get(di)));
+                    System.out.println(testUnit == null ? null : bc.bcUnitTypeToJson(testUnit.unitType()));
                 }
                 MapLocation newunitloc = floc.add(dirs.get(di));
                 Unit newunit = gc.senseUnitAtLocation(newunitloc);
@@ -601,7 +608,7 @@ public class Player {
             if (gc.isMoveReady(id)) {
                 ArrayList<Direction> dirs = availableDirections(rloc);
                 if (dirs.size() > 0) {
-                    Direction dir = dirs.get((int) (Math.random() * dirs.size()));
+                    Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
                     if (gc.canMove(id, dir)) {
                         gc.moveRobot(id, dir);
                         updateLocation(id, rloc, rloc.add(dir));
@@ -685,7 +692,7 @@ public class Player {
             for (MapLocation m: adjacent.get(ci)) {
                 if ((isPassable(m) || mtoi(m) == fi) && !visited.contains(mtoi(m))) {
                     StaticPath newPath = new StaticPath(m, e.path);
-                    StaticPath.StaticPathEntry newEntry = new StaticPath.StaticPathEntry(g +
+                    StaticPath.StaticPathEntry newEntry = new StaticPath.StaticPathEntry((g + 1) +
                             StaticPath.getCost(m, finish), newPath);
                     pq.add(newEntry);
                 }
