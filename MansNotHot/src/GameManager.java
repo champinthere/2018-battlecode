@@ -197,4 +197,6 @@ public class GameManager {
         mapAnalyzer.updateWithUnitPositions();
         // add units to map
     }
+
+
 }

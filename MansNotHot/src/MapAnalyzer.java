@@ -193,7 +193,7 @@ public class MapAnalyzer {
                 }
                 return p.getNext();
             }
-            double g = e.cost - StaticPath.getCost(e.path.getLoc(), finish);
+            int g = e.cost - StaticPath.getCost(e.path.getLoc(), finish);
             PathNode node = graph.get(c);
             for (PathNode nearby: node.adj) {
                 if (!visited.contains(nearby.c)) {

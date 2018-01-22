@@ -2,22 +2,23 @@ import bc.MapLocation;
 
 public class StaticPath {
     public static class StaticPathEntry implements Comparable<StaticPathEntry> {
-        double cost;
+        int cost;
         StaticPath path;
 
         @Override
         public int compareTo(StaticPathEntry o) {
-            return new Double(cost).compareTo(o.cost);
+            return Integer.valueOf(cost).compareTo(o.cost);
         }
 
-        public StaticPathEntry(double a, StaticPath b) {
+        public StaticPathEntry(int a, StaticPath b) {
             cost = a;
             path = b;
         }
     }
 
-    public static double getCost(MapLocation a, MapLocation b) {
-        return Math.sqrt((a.getX() - b.getX()) * (a.getX() - b.getX()) + (a.getY() - b.getY()) * (a.getY() - b.getY()));
+    public static int getCost(MapLocation a, MapLocation b) {
+        // computes Chebyshev Distance
+        return Math.max(Math.abs(a.getX() - b.getX()), Math.abs(a.getY() - b.getY()));
     }
 
     public MapLocation getLoc() {
