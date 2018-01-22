@@ -324,7 +324,7 @@ public class Player {
     public void updateLocation(int id, MapLocation oldpos, MapLocation newpos) {
         Unit u = gc.unit(id);
         int ox = oldpos.getX(), oy = oldpos.getY();
-        int nx = newpos.getX(), ny = oldpos.getY();
+        int nx = newpos.getX(), ny = newpos.getY();
         if (unitMap[ox][oy].id() == id)
             unitMap[ox][oy] = null;
         unitMap[nx][ny] = u;
@@ -568,24 +568,7 @@ public class Player {
             ArrayList<Direction> dirs = availableDirections(floc);
             int gi = 0, di = 0;
             while (gi < garrison.size() && di < dirs.size()) {
-                try {
-                    gc.unload(id, dirs.get(di));
-                }
-                catch (Exception e) {
-                    System.out.println(gc.round() + " Exception ========================");
-                    System.out.println(mapdirs.indexOf(dirs.get(di)));
-                    System.out.println(floc.getX() + " " + floc.getY());
-                    int fx = floc.getX(), fy = floc.getY();
-                    for (int j = 2; j >= -2; --j) {
-                        for (int i = -2; i <= 2; ++i) {
-                            if (fx + i >= 0 && fx + i < width && fy + j >= 0 && fy + j < height)
-                                System.out.print(isPassable(new MapLocation(planet, fx + i, fy + j)) ? "op " : "po ");
-                        }
-                        System.out.println();
-                    }
-                    Unit testUnit = gc.senseUnitAtLocation(floc.add(dirs.get(di)));
-                    System.out.println(testUnit == null ? null : bc.bcUnitTypeToJson(testUnit.unitType()));
-                }
+                gc.unload(id, dirs.get(di));
                 MapLocation newunitloc = floc.add(dirs.get(di));
                 Unit newunit = gc.senseUnitAtLocation(newunitloc);
                 unitMap[newunitloc.getX()][newunitloc.getY()] = newunit;
