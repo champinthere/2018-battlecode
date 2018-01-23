@@ -322,6 +322,9 @@ public class Player {
     Metric metric;
     RangerNearestNeighbor rnn;
     Random rnd;
+    MapLocation knownEnemy[]; // 5x5 blocks where we are under attack
+    HashSet<Integer> attackRangers, baseRangers;
+    int rangerCounter;
 
     public MapLocation randomMarsLoc() {
         int x = rnd.nextInt(width);
@@ -375,6 +378,10 @@ public class Player {
         ledger = new Ledger();
         metric = new Metric();
         rnn = new RangerNearestNeighbor();
+        knownEnemy = new MapLocation[10];
+        attackRangers = new HashSet<>();
+        baseRangers = new HashSet<>();
+        rangerCounter = 0;
         for (int i = 0; i < width; ++i) {
             for (int j = 0; j < height; ++j) {
                 ArrayList<MapLocation> nearby = new ArrayList<>();
@@ -648,38 +655,39 @@ public class Player {
 
             int id = u.id();
             int round = (int) gc.round();
+            boolean attacking = false;
             MapLocation rloc = u.location().mapLocation();
             long dsq = Integer.MAX_VALUE;
-            Unit rocket = null;
-            MapLocation rocketLocation = null;
-            for (Unit b : rockets) {
-                if (b.location().mapLocation().distanceSquaredTo(rloc) < dsq) {
-                    rocketLocation = b.location().mapLocation();
-                    dsq = rocketLocation.distanceSquaredTo(rloc);
-                    rocket = b;
+            Unit target = null;
+            MapLocation targetLocation = null;
+
+            // Attack
+            if (gc.isAttackReady(id)) {
+                Unit neighbor = rnn.neighbor(gc.unit(id));
+                if (neighbor != null) {
+                    // add this to the known locations of enemies we are currently attacking
+                    for(int i=9; i>0; --i) knownEnemy[i] = knownEnemy[i-1];
+                    knownEnemy[0] = u.location().mapLocation();
+
+                    int nid = neighbor.id();
+                    if (gc.canAttack(id, nid)) {
+                        gc.attack(id, nid);
+                        attacking = true;
+                    }
                 }
             }
 
-            if (gc.isMoveReady(id)) {
-                if (dsq <= 2)
-                    System.out.println("CLOSE TO ROCKET");
-                if (rocket != null && dsq > 2 && dsq <= 100 && rocket.structureGarrison().size() < rocket.structureMaxCapacity()) {
-                    StaticPath path = getStaticPath(rloc, rocketLocation); // very inefficient!!!
-                    if (path != null) { // shouldn't be null but sometimes is
+            if(attackRangers.contains(id)) {
+                if(!attacking && knownEnemy[0]!=null) { // not currently attacking, move to an embattled location
+                    StaticPath path = getStaticPath(rloc, knownEnemy[0]);
+                    if(path!=null) {
                         Direction d = rloc.directionTo(path.getLoc());
                         if (gc.canMove(id, d)) {
                             gc.moveRobot(id, d);
                             updateLocation(id, rloc, path.getLoc());
                         }
                     }
-                }
-                else if (rocket != null && dsq <= 2 && gc.canLoad(rocket.id(), id)) {
-                    gc.load(rocket.id(), id);
-                    unitMap[rloc.getX()][rloc.getY()] = null;
-                    System.out.println("Loaded onto rocket");
-                    return;
-                }
-                else {
+                } else { // either attacking or there are no known enemies
                     ArrayList<Direction> dirs = availableDirections(rloc);
                     if (dirs.size() > 0) {
                         Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
@@ -690,13 +698,50 @@ public class Player {
                     }
                 }
             }
-            if (gc.isAttackReady(id)) {
-                Unit neighbor = rnn.neighbor(gc.unit(id));
-                if (neighbor != null) {
-                    int nid = neighbor.id();
-                    if (gc.canAttack(id, nid))
-                        gc.attack(id, nid);
+            else if(baseRangers.contains(id)) {
+
+                for (Unit b : rockets) {
+                    if (b.location().mapLocation().distanceSquaredTo(rloc) < dsq) {
+                        targetLocation = b.location().mapLocation();
+                        dsq = targetLocation.distanceSquaredTo(rloc);
+                        target = b;
+                    }
                 }
+                if(gc.isMoveReady(id)) {
+                    if(target!=null) {
+                        if(dsq>2 && dsq<=100 && target.structureGarrison().size() < target.structureMaxCapacity()) {
+                            StaticPath path = getStaticPath(rloc, targetLocation); // very inefficient!!!
+                            if (path != null) { // shouldn't be null but sometimes is
+                                Direction d = rloc.directionTo(path.getLoc());
+                                if (gc.canMove(id, d)) {
+                                    gc.moveRobot(id, d);
+                                    updateLocation(id, rloc, path.getLoc());
+                                }
+                            }
+                        }
+                        else if(dsq<=2 && gc.canLoad(target.id(), id)) {
+                            gc.load(target.id(), id);
+                            unitMap[rloc.getX()][rloc.getY()] = null;
+                            System.out.println("Loaded onto rocket");
+                            return;
+                        }
+                    }
+                    else { // no rocket to load; move randomly
+                        ArrayList<Direction> dirs = availableDirections(rloc);
+                        if (dirs.size() > 0) {
+                            Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
+                            if (gc.canMove(id, dir)) {
+                                gc.moveRobot(id, dir);
+                                updateLocation(id, rloc, rloc.add(dir));
+                            }
+                        }
+                    }
+                }
+            }
+            else {
+                if(attackRangers.size()>baseRangers.size()/2) {
+                    baseRangers.add(id);
+                } else attackRangers.add(id);
             }
         }
         catch (Exception e) {e.printStackTrace();}
