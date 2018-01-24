@@ -682,7 +682,7 @@ public class Player {
                     StaticPath path = getStaticPath(rloc, knownEnemy[0]);
                     if(path!=null) {
                         Direction d = rloc.directionTo(path.getLoc());
-                        if (gc.canMove(id, d)) {
+                        if (gc.canMove(id, d) && gc.isMoveReady(id)) {
                             gc.moveRobot(id, d);
                             updateLocation(id, rloc, path.getLoc());
                         }
