@@ -7,8 +7,6 @@ public class Player {
     int DESIRED_WORKERS = 8;
     int DESIRED_FACTORIES = 4;
     int DESIRED_RANGERS = 50;
-    int STAGGER = 8; //
-    int WINDOW_SIZE = 32;
 
     class Purpose {
         int roundCreated;
@@ -295,20 +293,395 @@ public class Player {
         }
     }
 
+    class PathFinder {
+        int[][] hcaMap;
+        HashMap<Integer, Integer> targetPositions;
+        HashMap<Integer, Integer> tolerances;
+        HashMap<Integer, Integer> offsets;
+        HashMap<Integer, HashMap<Integer, Integer>> distances;
+        HashMap<Integer, CPathNode> currentPaths;
+        int STAGGER = 10; //
+        int WINDOW_SIZE = 20;
+
+        class PathNode {
+            int point;
+            int cost;
+            public PathNode(int point, int cost) {
+                this.point = point;
+                this.cost = cost;
+            }
+        }
+
+        public int xv(int key) { return key / height; }
+        public int yv(int key) { return key % height; }
+        public int rv(int x, int y) { return x * height + y; }
+
+        public int dsqbtw(int p1, int p2) {
+            return (p1 / height) * (p2 / height) + (p1 % height) * (p2 % height);
+        }
+
+        public PathFinder() {
+            hcaMap = new int[width * height][1001];
+            targetPositions = new HashMap<>();
+            tolerances = new HashMap<>();
+            offsets = new HashMap<>();
+            distances = new HashMap<>();
+            currentPaths = new HashMap<>();
+            for (int i = 0; i < width * height; ++i) {
+                distances.put(i, new HashMap<>());
+            }
+        }
+
+        public int heuristic(int p1, int p2) {
+            // Standard A* Heuristic for map with diagonal movement
+            int x1 = xv(p1), x2 = xv(p2), y1 = yv(p1), y2 = yv(p2);
+            return Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+        }
+
+        public int trueHeuristic(int p1, int p2) {
+            return astar(p2, p1); // backwards order is important for reverse caching
+        }
+
+        public int astar(int p1, int p2) {
+            if (distances.get(p1).containsKey(p2))
+                return distances.get(p1).get(p2);
+            HashSet<Integer> visited = new HashSet<>();
+            PriorityQueue<PathNode> pq = new PriorityQueue<>(400,
+                    (a, b) -> a.cost - b.cost);
+            pq.add(new PathNode(p1, heuristic(p1, p2)));
+            int returnValue = -1;
+            while (!pq.isEmpty()) {
+                // take out node
+                PathNode node = pq.remove();
+                if (visited.contains(node.point))
+                    continue;
+
+                // close set if not already in closed set
+                visited.add(node.point);
+                int g = node.cost - heuristic(node.point, p2);
+                distances.get(node.point).put(p1, g);
+                distances.get(p1).put(node.point, g);
+
+                // return if sought after
+                if (node.point == p2)
+                    returnValue = g;
+
+                // add adjacent nodes to open set
+                for (MapLocation ml: adjacent[node.point]) {
+                    int newPoint = mtoi(ml);
+                    if (!visited.contains(newPoint)) {
+                        int computedCost = g + 1 + heuristic(newPoint, p2);
+                        pq.add(new PathNode(newPoint, computedCost));
+                    }
+                }
+            }
+            return returnValue;
+        }
+
+        class CPathNode {
+            int point; // at the beginning of the round
+            int cost;
+            int round;
+            int heat;
+            // how much heat you start the round with
+            // have to be very careful about this
+
+            CPathNode next;
+
+            public CPathNode(int point, int cost, int round, int heat) {
+                this(point, cost, round, heat, null);
+            }
+
+            public CPathNode(int point, int cost, int round, int heat, CPathNode next) {
+                this.point = point;
+                this.cost = cost;
+                this.round = round;
+                this.heat = heat;
+                this.next = next;
+            }
+
+            public String toString() {
+                StringBuffer result = new StringBuffer();
+                for (CPathNode p = this; p != null; p = p.next)
+                    result.append("< (" + xv(p.point) + " " + yv(p.point) + ") " + p.cost + " " + p.round + " " + p.heat + ">\n");
+                return result.toString();
+            }
+        }
+
+
+
+        public void clearPath(int id) {
+            if (currentPaths.containsKey(id)) {
+                CPathNode pn = currentPaths.get(id);
+                int round = (int) gc.round();
+                for (CPathNode p = pn; p != null; p = p.next) {
+                    if (p.round > round) {
+                        hcaMap[p.point][p.round] = 0;
+                    }
+                }
+            }
+        }
+
+        public void addPath(int id, CPathNode result) {
+            currentPaths.put(id, result);
+            int count = 0;
+            for (CPathNode p = result; p != null; p = p.next) {
+                hcaMap[p.point][p.round] = id;
+                ++count;
+                if (count >= WINDOW_SIZE)
+                    break;
+            }
+        }
+
+        public void testOne() {
+            int ax = 0, ay = 0, aa = 0;
+            int[][] tm = new int[width][height];
+            for (int i = 0; i < width; ++i) {
+                for (int j = 0; j < height; ++j) {
+                    if (terrain[i][j]) {
+                        tm[i][j] = astar(height * i + j, aa);
+                    }
+                    else
+                        tm[i][j] = -1;
+                }
+            }
+
+            for (int j = height - 1; j >= 0; --j) {
+                for (int i = 0; i < width; ++i) {
+                    System.out.format("%4d", tm[i][j]);
+                }
+                System.out.println();
+            }
+        }
+
+        public void computePath(int id) {
+            // initially going to implement path for base case
+            // one important thing to consider is the topological sort consideration
+            // deliberately disallow two-cycles
+            // another important thing to consider is the movement_cooldowns of different units
+            Unit u = gc.unit(id);
+            int cooldown = (int) u.movementCooldown();
+            int cpos = mtoi(u.location().mapLocation());
+            int dest = targetPositions.get(id);
+            int tol = tolerances.get(id);
+            int round = (int) gc.round();
+            HashSet<Integer> visited = new HashSet<>();
+
+            CPathNode result = null;
+            PriorityQueue<CPathNode> pq = new PriorityQueue<>(400,
+                    (a, b) -> a.cost - b.cost);
+
+            pq.add(new CPathNode(
+                    cpos,
+                    10 * round + cooldown * trueHeuristic(cpos, dest) - cooldown,
+                    round,
+                    (int) u.movementHeat())
+            );
+
+            while (!pq.isEmpty()) {
+                CPathNode pn = pq.remove();
+                result = pn;
+                visited.add(pn.point);
+                if (pn.point == dest)
+                    break;
+                if (pn.round == 1000)
+                    continue;
+                if (dsqbtw(pn.point, dest) <= tol && hcaMap[pn.point][pn.round + 1] == 0) {
+                    pq.add(new CPathNode(pn.point, pn.cost, pn.round + 1, Math.max(pn.heat - 10, 0), pn));
+                }
+                else if (hcaMap[pn.point][pn.round + 1] == 0) {
+                    pq.add(new CPathNode(pn.point, pn.cost + 10, pn.round + 1, Math.max(pn.heat - 10, 0), pn));
+                }
+                if (pn.heat < 10) {
+                    for (MapLocation ml: adjacent[pn.point]) {
+                        int pt = mtoi(ml);
+                        if (visited.contains(pt) && !(pt == dest))
+                            continue;
+                        if (dsqbtw(pt, dest) <= tol && hcaMap[pt][pn.round + 1] == 0) {
+                            if (!(hcaMap[pn.point][pn.round + 1] != 0 && hcaMap[pn.point][pn.round + 1] == hcaMap[pt][pn.round])) {
+                                pq.add(new CPathNode(pt,
+                                        pn.cost,
+                                        pn.round + 1,
+                                        pn.heat + cooldown - 10,
+                                        pn
+                                ));
+                            }
+                        }
+                        else if (hcaMap[pt][pn.round + 1] == 0) {
+                            if (!(hcaMap[pn.point][pn.round + 1] != 0 && hcaMap[pn.point][pn.round + 1] == hcaMap[pt][pn.round])) {
+                                pq.add(new CPathNode(pt,
+                                        pn.cost + 10 + cooldown * (trueHeuristic(pt, dest) - trueHeuristic(pn.point, dest)),
+                                        pn.round + 1,
+                                        pn.heat + cooldown - 10,
+                                        pn
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+
+            int pathLen = 0;
+            for (CPathNode x = result; x != null; x = x.next)
+                pathLen++;
+//            System.out.println("PATHLEN: " + pathLen + " " + result.round);
+
+            // reverse linked list
+            CPathNode intermediate = result.next;
+            result.next = null;
+            while (intermediate != null) {
+                CPathNode tmp = intermediate.next;
+                intermediate.next = result;
+                result = intermediate;
+                intermediate = tmp;
+            }
+            if (round == 90) {
+                System.out.println(xv(cpos) + " " + yv(cpos));
+                System.out.println(xv(dest) + " " + yv(dest));
+                System.out.println(result);
+            }
+            clearPath(id);
+            addPath(id, result);
+            // now need to process this path
+        }
+
+        class Move {
+            int id;
+            int oldpos;
+            int newpos;
+            int conflict; // conflict needs to move before this
+            int conflictsWith; // this needs to happen before conflictsWith
+            public Move(int id, int round) {
+                this.id = id;
+                oldpos = mtoi(gc.unit(id).location().mapLocation());
+                newpos = oldpos;
+                CPathNode pn = null;
+                try {
+                    pn = currentPaths.get(id);
+                    if (round != pn.round)
+                        System.out.println(round + " " + "implementation ERROR======================= " + pn.round);
+                    else if (pn.point != oldpos) {
+                        System.out.println(round + " " + "state_state ERROR----------------------------");
+                        computePath(id);
+                        pn = currentPaths.get(id);
+                    }
+                    while (pn.round != round + 1)
+                        pn = pn.next;
+                    currentPaths.put(id, pn);
+                    newpos = pn.point;
+                } catch (Exception e) {}
+                finally {
+
+                }
+            }
+
+            public void addConflict(HashMap<Integer, Move> h) {
+                int cid = 0;
+                if (unitMap[xv(newpos)][yv(newpos)] != null)
+                    cid = unitMap[xv(newpos)][yv(newpos)].id();
+                if (cid != id && cid != 0) {
+                    try {
+                        conflict = cid;
+                        h.get(conflict).conflictsWith = id;
+                    } catch (Exception e) {e.printStackTrace();} // should only happen if conflicts with enemy unit
+                    // make sure all of our units are in the pathfinder
+                }
+            }
+        }
+        int printCount = 0;
+        public void moveUnits() {
+            int round = (int) gc.round();
+            int currentStagger = round % STAGGER;
+            for (int id: targetPositions.keySet()) {
+                if (offsets.get(id) == currentStagger)
+                    computePath(id);
+            }
+            HashMap<Integer, Move> h = new HashMap<>();
+            for (int id: currentPaths.keySet()) {
+                h.put(id, new Move(id, round));
+            }
+            for (int id: h.keySet())
+                h.get(id).addConflict(h);
+            ArrayDeque<Integer> noConflicts = new ArrayDeque<>();
+            for (int id: h.keySet())
+                if (h.get(id).conflict == 0)
+                    noConflicts.addLast(id);
+
+            boolean error = false;
+            while(noConflicts.size() > 0) {
+                int id = noConflicts.removeFirst();
+                Move move = h.get(id);
+                MapLocation oldLocation = itom(move.oldpos);
+                MapLocation newLocation = itom(move.newpos);
+                if (round == 80) {
+                    System.out.println("MOVE LISTING");
+                    System.out.println(oldLocation.getX() + " " + oldLocation.getY());
+                    System.out.println(newLocation.getX() + " " + newLocation.getY());
+                }
+                Direction d = oldLocation.directionTo(newLocation);
+                if (d != Direction.Center) {
+                    if (gc.isMoveReady(id) && gc.canMove(id, d)) { // technically should always be move ready but practically no
+                        gc.moveRobot(id, d);
+                        updateLocation(id, oldLocation, newLocation); //figure out why throwing an error
+                        if (move.conflictsWith != 0)
+                            noConflicts.addLast(move.conflictsWith);
+                    }
+                    else
+                        error = true;
+                }
+            }
+            if (error)
+                for (int id: h.keySet())
+                    computePath(id);
+        }
+
+        public void add(int id) {
+            Unit u = gc.unit(id);
+            if (!targetPositions.containsKey(id))
+                targetPositions.put(id, mtoi(u.location().mapLocation()));
+            if (!tolerances.containsKey(id))
+                tolerances.put(id, 0);
+            offsets.put(id, rnd.nextInt(STAGGER));
+        }
+
+        public void updateTarget(int id, int targetKey) {
+            updateTarget(id, targetKey, 0);
+        }
+
+        public void updateTarget(int id, int targetKey, int tolerance) {
+            Unit u = gc.unit(id);
+            targetPositions.put(id, targetKey);
+            tolerances.put(id, tolerance);
+            if (!offsets.containsKey(id))
+                offsets.put(id, rnd.nextInt(STAGGER));
+            computePath(id);
+        }
+
+        public void updateTarget(int id, MapLocation targetPos) {
+            updateTarget(id, mtoi(targetPos), 0);
+        }
+
+        public void updateTarget(int id, MapLocation targetPos, int tolerance) {
+            updateTarget(id, mtoi(targetPos), tolerance);
+        }
+    }
+
     GameController gc;
     List<Direction> mapdirs;
     HashMap<Integer, Purpose> actions;
     HashMap<Integer, Integer> lastUpdated;
     HashMap<Integer, Unit> idMap;
     Unit[][] unitMap;
-    int[][][] hcaMap; // should plan 64 rounds in advance
+    boolean[][] terrain;
+    int[][][] somemapNotNeeded; // should plan 64 rounds in advance
+    PathFinder pf;
     Planet planet;
     Team team;
     Team opponent;
     PlanetMap map;
     PlanetMap earthMap;
     PlanetMap marsMap;
-    HashMap<Integer, ArrayList<MapLocation>> adjacent;
+    ArrayList<MapLocation>[] adjacent;
     ArrayList<Unit> blueprints;
     ArrayList<Unit> rockets;
     public int mtoi (MapLocation l) { return (height * l.getX() + l.getY()); }
@@ -338,11 +711,26 @@ public class Player {
         }
     }
 
+    public MapLocation randomEarthLoc() {
+        int x = rnd.nextInt(width);
+        int y = rnd.nextInt(height);
+        int key = x * height + y;
+        int area = width * height;
+        while (true) {
+            int kx = key / height;
+            int ky = key % height;
+            MapLocation m = new MapLocation(Planet.Earth, kx, ky);
+            if (earthMap.isPassableTerrainAt(m) > 0)
+                return m;
+            key = (key + 1) % (area);
+        }
+    }
+
     public void updateLocation(int id, MapLocation oldpos, MapLocation newpos) {
         Unit u = gc.unit(id);
         int ox = oldpos.getX(), oy = oldpos.getY();
         int nx = newpos.getX(), ny = newpos.getY();
-        if (unitMap[ox][oy].id() == id)
+        if (unitMap[ox][oy] != null && unitMap[ox][oy].id() == id)
             unitMap[ox][oy] = null;
         unitMap[nx][ny] = u;
     }
@@ -355,7 +743,7 @@ public class Player {
         planet = gc.planet();
         team = gc.team();
         if (team == Team.Red)
-            for (int i = 0; i < 20; ++i) rnd.nextDouble();
+            for (int i = 0; i < 28; ++i) rnd.nextDouble();
         opponent = (team == Team.Red ? Team.Blue : Team.Red);
         map = gc.startingMap(planet);
         earthMap = gc.startingMap(Planet.Earth);
@@ -363,11 +751,12 @@ public class Player {
         actions = new HashMap<>();
         lastUpdated = new HashMap<>();
         idMap = new HashMap<>();
-        adjacent = new HashMap<>();
         width = (int) map.getWidth();
         height = (int) map.getHeight();
+        adjacent = new ArrayList[width * height];
         unitMap = new Unit[width][height];
-        hcaMap = new int[width][height][1001];
+        terrain = new boolean[width][height];
+        somemapNotNeeded = new int[width][height][1001];
         posGoal = new HashMap<>();
         pathCache = new HashMap<>();
         blueprints = new ArrayList<>();
@@ -375,10 +764,13 @@ public class Player {
         ledger = new Ledger();
         metric = new Metric();
         rnn = new RangerNearestNeighbor();
+        pf = new PathFinder();
         for (int i = 0; i < width; ++i) {
             for (int j = 0; j < height; ++j) {
                 ArrayList<MapLocation> nearby = new ArrayList<>();
                 MapLocation m = new MapLocation(planet, i, j);
+                if (map.isPassableTerrainAt(m) > 0)
+                    terrain[i][j] = true;
                 VecMapLocation vec = gc.allLocationsWithin(m, 2);
                 for (int k = 0; k < vec.size(); ++k) {
                     MapLocation l = vec.get(k);
@@ -386,7 +778,7 @@ public class Player {
                         if (map.isPassableTerrainAt(l) > 0)
                             nearby.add(l);
                 }
-                adjacent.put(mtoi(m), nearby);
+                adjacent[mtoi(m)] = nearby;
             }
         }
 
@@ -394,6 +786,7 @@ public class Player {
         updateState();
         System.out.println("Player done initializing");
         System.out.println(metric);
+        pf.testOne();
     }
 
     private void research() {
@@ -450,6 +843,10 @@ public class Player {
     }
 
     public void run() {
+//        try {
+//            if (gc.round() > 5)
+//                Thread.sleep(10000);
+//        } catch (Exception e) {}
         updateState();
         ArrayList<Integer> toBeRemoved = new ArrayList<Integer>();
         int round = (int) gc.round();
@@ -462,21 +859,72 @@ public class Player {
             Unit u = idMap.get(unitid);
             switch (u.unitType()) {
                 case Worker:
-                    doWorker(u);
+                    doWorker2(u);
                     break;
-                case Factory:
-                    doFactory(u);
-                    break;
-                case Ranger:
-                    doRanger(u);
-                    break;
-                case Rocket:
-                    doRocket(u);
+//                case Factory:
+//                    doFactory(u);
+//                    break;
+//                case Ranger:
+//                    doRanger(u);
+//                    break;
+//                case Rocket:
+//                    doRocket(u);
             }
         }
+        pf.moveUnits();
 
         for (int id : toBeRemoved) {
             actions.remove(id);
+        }
+    }
+
+    HashMap<Integer, Integer> yworker;
+    HashMap<Integer, Integer> yworkerinverse;
+    HashMap<Integer, Boolean> side;
+
+    public void doWorker2(Unit u) {
+        if (yworker == null || side == null) {
+            yworker = new HashMap<>();
+            yworkerinverse = new HashMap<>();
+            side = new HashMap<>();
+        }
+        if (!u.location().isOnMap())
+            return;
+        int round = (int) gc.round();
+        if (round < 90) {
+            int id = u.id();
+            MapLocation wloc = u.location().mapLocation();
+            ArrayList<Direction> dirs = availableDirections(wloc);
+            Direction dir = dirs.size() > 0 ? dirs.get(0) : Direction.Center;
+
+            if (dirs.size() > 0 && gc.canReplicate(id, dir) && ledger.numWorkers < 24) {
+                gc.replicate(id, dir);
+                ++ledger.numWorkers;
+            }
+        }
+        else if (round % 90 == 0 && round < 190) {
+            int id = u.id();
+            if (!yworkerinverse.containsKey(id)) {
+                int sy = 0;
+                while (yworker.containsKey(sy) && yworker.get(sy) >= 2)
+                    ++sy;
+                if (!yworker.containsKey(sy) || yworker.get(sy) == 0) {
+                    side.put(id, false);
+                    yworker.put(sy, 1);
+                    yworkerinverse.put(id, sy);
+                }
+                else {
+                    side.put(id, true);
+                    yworker.put(sy, 2);
+                    yworkerinverse.put(id, sy);
+                }
+            }
+            else {
+                side.put(id, !side.get(id));
+            }
+            MapLocation target = new MapLocation(planet, side.get(id) ? 0 : width - 1, yworkerinverse.get(id));
+            System.out.println(target.getX() + " " + target.getY());
+            pf.updateTarget(u.id(), target, 0);
         }
     }
 
@@ -663,7 +1111,7 @@ public class Player {
             if (gc.isMoveReady(id)) {
                 if (dsq <= 2)
                     System.out.println("CLOSE TO ROCKET");
-                if (rocket != null && dsq > 2 && dsq <= 100 && rocket.structureGarrison().size() < rocket.structureMaxCapacity()) {
+                if (planet == Planet.Earth && rocket != null && dsq > 2 && dsq <= 100 && rocket.structureGarrison().size() < rocket.structureMaxCapacity()) {
                     StaticPath path = getStaticPath(rloc, rocketLocation); // very inefficient!!!
                     if (path != null) { // shouldn't be null but sometimes is
                         Direction d = rloc.directionTo(path.getLoc());
@@ -673,7 +1121,7 @@ public class Player {
                         }
                     }
                 }
-                else if (rocket != null && dsq <= 2 && gc.canLoad(rocket.id(), id)) {
+                else if (planet == Planet.Earth  && rocket != null && dsq <= 2 && gc.canLoad(rocket.id(), id)) {
                     gc.load(rocket.id(), id);
                     unitMap[rloc.getX()][rloc.getY()] = null;
                     System.out.println("Loaded onto rocket");
@@ -725,12 +1173,12 @@ public class Player {
     }
 
     public boolean isPassable(MapLocation m) {
-        return (map.isPassableTerrainAt(m) > 0 && unitMap[m.getX()][m.getY()] == null);
+        return (terrain[m.getX()][m.getY()] && unitMap[m.getX()][m.getY()] == null);
     }
 
     public ArrayList<Direction> availableDirections(MapLocation l) {
         ArrayList<Direction> dirs = new ArrayList<Direction>();
-        for (MapLocation m: adjacent.get(mtoi(l))) {
+        for (MapLocation m: adjacent[mtoi(l)]) {
             if (isPassable(m))
                 dirs.add(l.directionTo(m));
         }
@@ -764,7 +1212,7 @@ public class Player {
                 return p.getNext();
             }
             int g = e.cost - StaticPath.getCost(e.path.getLoc(), finish);
-            for (MapLocation m: adjacent.get(ci)) {
+            for (MapLocation m: adjacent[ci]) {
                 if ((isPassable(m) || mtoi(m) == fi) && !visited.contains(mtoi(m))) {
                     StaticPath newPath = new StaticPath(m, e.path);
                     StaticPath.StaticPathEntry newEntry = new StaticPath.StaticPathEntry((g + 1) +
