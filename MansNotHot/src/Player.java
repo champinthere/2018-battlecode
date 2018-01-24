@@ -691,7 +691,7 @@ public class Player {
                     ArrayList<Direction> dirs = availableDirections(rloc);
                     if (dirs.size() > 0) {
                         Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
-                        if (gc.canMove(id, dir)) {
+                        if (gc.canMove(id, dir) && gc.isMoveReady(id)) {
                             gc.moveRobot(id, dir);
                             updateLocation(id, rloc, rloc.add(dir));
                         }
