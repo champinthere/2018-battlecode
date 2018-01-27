@@ -300,8 +300,8 @@ public class Player {
         HashMap<Integer, Integer> offsets;
         HashMap<Integer, HashMap<Integer, Integer>> distances;
         HashMap<Integer, CPathNode> currentPaths;
-        int STAGGER = 10; //
-        int WINDOW_SIZE = 20;
+        int STAGGER = 8; //
+        int WINDOW_SIZE = 16;
 
         class PathNode {
             int point;
@@ -350,6 +350,7 @@ public class Player {
                     (a, b) -> a.cost - b.cost);
             pq.add(new PathNode(p1, heuristic(p1, p2)));
             int returnValue = -1;
+            int countExtra = 0;
             while (!pq.isEmpty()) {
                 // take out node
                 PathNode node = pq.remove();
@@ -361,6 +362,12 @@ public class Player {
                 int g = node.cost - heuristic(node.point, p2);
                 distances.get(node.point).put(p1, g);
                 distances.get(p1).put(node.point, g);
+
+                if (returnValue != -1)
+                    ++countExtra;
+
+                if (countExtra >= 60) // parameter to be changed based on performance metrics
+                    break;
 
                 // return if sought after
                 if (node.point == p2)
@@ -478,7 +485,7 @@ public class Player {
                     (int) u.movementHeat())
             );
 
-            while (!pq.isEmpty()) {
+            while (!pq.isEmpty() && pq.size() < 1000000) { // 5M to prevent infinite loops technically speaking
                 CPathNode pn = pq.remove();
                 result = pn;
                 visited.add(pn.point);
@@ -521,12 +528,13 @@ public class Player {
                 }
             }
 
-            int pathLen = 0;
+            int pathLength = 0;
             for (CPathNode x = result; x != null; x = x.next)
-                pathLen++;
-//            System.out.println("PATHLEN: " + pathLen + " " + result.round);
+                pathLength++;
 
             // reverse linked list
+            CPathNode firstEnd = result;
+            CPathNode endNode = result;
             CPathNode intermediate = result.next;
             result.next = null;
             while (intermediate != null) {
@@ -535,11 +543,74 @@ public class Player {
                 result = intermediate;
                 intermediate = tmp;
             }
-            if (round == 90) {
-                System.out.println(xv(cpos) + " " + yv(cpos));
-                System.out.println(xv(dest) + " " + yv(dest));
-                System.out.println(result);
+
+            for (int i = 1; i <= WINDOW_SIZE - pathLength; ++i) {
+                if (hcaMap[endNode.point][endNode.round + 1] == 0) {
+                    CPathNode newNode = new CPathNode(endNode.point, endNode.cost, endNode.round + i, Math.max(endNode.heat - 10, 0));
+                    endNode.next = newNode;
+                    endNode =  newNode;
+                }
+                else if (firstEnd.point == dest) {
+                    break; // add more complicated logic later
+//                    PriorityQueue<CPathNode> eq = new PriorityQueue<>(400,
+//                            (a, b) -> a.cost - b.cost);
+//                    int maxiter = WINDOW_SIZE - pathLength - i + 1;
+//                    int currentRound = endNode.round;
+//                    eq.add(endNode);
+//                    CPathNode appendation = null;
+//
+//                    while (!eq.isEmpty() && eq.size() < 70) {
+//                        CPathNode pn = eq.remove();
+//                        appendation = pn;
+//                        if (appendation.point == dest)
+//                            break;
+//                        if (pn.round > endNode.round + maxiter + 1)
+//                            break;
+//                        if (hcaMap[pn.point][pn.round + 1] == 0) {
+//                            pq.add(new CPathNode(pn.point, dsqbtw(pn.point, dest) + pn.round + 1, pn.round + 1, Math.max(pn.heat - 10, 0), pn));
+//                        }
+//                        for (MapLocation ml: adjacent[pn.point]) {
+//                            int pt = mtoi(ml);
+//                            if (dsqbtw(pt, dest) <= tol && hcaMap[pt][pn.round + 1] == 0) {
+//                                if (!(hcaMap[pn.point][pn.round + 1] != 0 && hcaMap[pn.point][pn.round + 1] == hcaMap[pt][pn.round])) {
+//                                    pq.add(new CPathNode(pt,
+//                                            pn.round + 1 + dsqbtw(pt, dest),
+//                                            pn.round + 1,
+//                                            pn.heat + cooldown - 10,
+//                                            pn
+//                                    ));
+//                                }
+//                            }
+//                        }
+//                    }
+//
+//                    CPathNode newEnd = appendation;
+//                    intermediate = result.next;
+//                    appendation.next = null;
+//                    int thislen = 1;
+//                    while (intermediate != null) {
+//                        CPathNode tmp = intermediate.next;
+//                        intermediate.next = appendation;
+//                        appendation = intermediate;
+//                        intermediate = tmp;
+//                        ++thislen;
+//                    }
+//                    endNode.next = appendation;
+//                    endNode = newEnd;
+//                    i += thislen - 1;
+                }
+
             }
+
+            // need to add function extending the path
+
+            // debug
+//            if (round == 90) {
+//                System.out.println(xv(cpos) + " " + yv(cpos));
+//                System.out.println(xv(dest) + " " + yv(dest));
+//                System.out.println(result);
+//            }
+
             clearPath(id);
             addPath(id, result);
             // now need to process this path
@@ -613,11 +684,11 @@ public class Player {
                 Move move = h.get(id);
                 MapLocation oldLocation = itom(move.oldpos);
                 MapLocation newLocation = itom(move.newpos);
-                if (round == 80) {
-                    System.out.println("MOVE LISTING");
-                    System.out.println(oldLocation.getX() + " " + oldLocation.getY());
-                    System.out.println(newLocation.getX() + " " + newLocation.getY());
-                }
+//                if (round == 80) {
+//                    System.out.println("MOVE LISTING");
+//                    System.out.println(oldLocation.getX() + " " + oldLocation.getY());
+//                    System.out.println(newLocation.getX() + " " + newLocation.getY());
+//                }
                 Direction d = oldLocation.directionTo(newLocation);
                 if (d != Direction.Center) {
                     if (gc.isMoveReady(id) && gc.canMove(id, d)) { // technically should always be move ready but practically no
@@ -880,7 +951,7 @@ public class Player {
 
     HashMap<Integer, Integer> yworker;
     HashMap<Integer, Integer> yworkerinverse;
-    HashMap<Integer, Boolean> side;
+    HashMap<Integer, Integer> side;
 
     public void doWorker2(Unit u) {
         if (yworker == null || side == null) {
@@ -897,7 +968,7 @@ public class Player {
             ArrayList<Direction> dirs = availableDirections(wloc);
             Direction dir = dirs.size() > 0 ? dirs.get(0) : Direction.Center;
 
-            if (dirs.size() > 0 && gc.canReplicate(id, dir) && ledger.numWorkers < 24) {
+            if (dirs.size() > 0 && gc.canReplicate(id, dir) && ledger.numWorkers < 30) {
                 gc.replicate(id, dir);
                 ++ledger.numWorkers;
             }
@@ -906,23 +977,23 @@ public class Player {
             int id = u.id();
             if (!yworkerinverse.containsKey(id)) {
                 int sy = 0;
-                while (yworker.containsKey(sy) && yworker.get(sy) >= 2)
+                while (yworker.containsKey(sy) && yworker.get(sy) >= 6)
                     ++sy;
                 if (!yworker.containsKey(sy) || yworker.get(sy) == 0) {
-                    side.put(id, false);
+                    side.put(id, 0);
                     yworker.put(sy, 1);
                     yworkerinverse.put(id, sy);
                 }
                 else {
-                    side.put(id, true);
-                    yworker.put(sy, 2);
+                    side.put(id, yworker.get(sy));
+                    yworker.put(sy, yworker.get(sy) + 1);
                     yworkerinverse.put(id, sy);
                 }
             }
             else {
-                side.put(id, !side.get(id));
+                side.put(id, 5 - side.get(id));
             }
-            MapLocation target = new MapLocation(planet, side.get(id) ? 0 : width - 1, yworkerinverse.get(id));
+            MapLocation target = new MapLocation(planet, side.get(id) < 3 ? side.get(id) : width - (side.get(id) - 2), yworkerinverse.get(id));
             System.out.println(target.getX() + " " + target.getY());
             pf.updateTarget(u.id(), target, 0);
         }
@@ -1225,6 +1296,11 @@ public class Player {
     }
 
     public static void main (String[] args) {
+        try {
+            Thread.sleep(15000);
+        }
+        catch (Exception e) { }
+
         GameController gc = new GameController();
         Player player = new Player(gc);
         while (true) {
