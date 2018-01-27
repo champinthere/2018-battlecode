@@ -158,8 +158,8 @@ public class Player {
         int hh; // spatial hash height
 
         public RangerNearestNeighbor() {
-            ww = width / CELL_SIZE;
-            hh = height / CELL_SIZE;
+            ww = (width / CELL_SIZE) + 1;
+            hh = (height / CELL_SIZE) + 1;
             spatialHash = new HashSet[ww][hh];
             spatialCache = new int[ww][hh];
             for (int i = 0; i < ww; ++i) {
@@ -183,6 +183,154 @@ public class Player {
         public Unit neighbor(Unit r) {
             int minRange = (int) r.rangerCannotAttackRange();
             int maxRange = (int) r.attackRange();
+            MapLocation rloc = r.location().mapLocation();
+            int rx = rloc.getX(), ry = rloc.getY();
+            int rxp = rx / CELL_SIZE, ryp = ry / CELL_SIZE;
+            boolean targetFound = false;
+            Unit target = null;
+            ArrayDeque<Integer> xq = new ArrayDeque<>(),
+                    yq = new ArrayDeque<>(),
+                    depthq = new ArrayDeque<>();
+            xq.addLast(rxp);
+            yq.addLast(ryp);
+            depthq.addLast(0);
+            if (spatialCache[rxp][ryp] > 0) {
+                try {
+                    int uid = spatialCache[rxp][ryp];
+                    Unit u = gc.unit(uid);
+                    int dist = (int) rloc.distanceSquaredTo(u.location().mapLocation());
+                    if (dist > minRange && dist <= maxRange) {
+                        target = u;
+                        targetFound = true;
+                    }
+                }
+                catch (Exception e) {
+                    spatialCache[rxp][ryp] = 0;
+                }
+            }
+            HashSet<Integer> visited = new HashSet<>();
+            while (!targetFound && xq.size() > 0) {
+                int cx = xq.removeFirst();
+                int cy = yq.removeFirst();
+                if (visited.contains(hh * cx + cy))
+                    continue;
+                visited.add(hh * cx + cy);
+                int depth = depthq.removeFirst();
+                HashSet<Integer> targets = spatialHash[cx][cy];
+                ArrayList<Unit> suitableTargets = new ArrayList<>(targets.size());
+                ArrayList<Integer> deletions = new ArrayList<>();
+                for (int uid: targets) {
+                    try {
+                        Unit u = gc.unit(uid);
+                        int dist = (int) rloc.distanceSquaredTo(u.location().mapLocation());
+                        if (dist > minRange && dist <= maxRange)
+                            suitableTargets.add(u);
+                    }
+                    catch (Exception e) {
+                        // implies that uid either is no longer visible
+                        // or that this unit has already died
+                        deletions.add(uid);
+                    }
+                }
+                for (int i: deletions)
+                    targets.remove(i);
+
+                if (suitableTargets.size() > 0) {
+                    targetFound = true;
+                    for (Unit u : suitableTargets) {
+                        if (target == null)
+                            target = u;
+                        else if (computePriority(target) < computePriority(u))
+                            target = u;
+                    }
+                }
+                else if (depth < SEARCH_DEPTH) {
+                    if (inHashRange(cx + 1, cy)) {
+                        xq.addLast(cx + 1);
+                        yq.addLast(cy);
+                        depthq.addLast(depth + 1);
+                    }
+                    if (inHashRange(cx - 1, cy)) {
+                        xq.addLast(cx - 1);
+                        yq.addLast(cy);
+                        depthq.addLast(depth + 1);
+                    }
+                    if (inHashRange(cx, cy + 1)) {
+                        xq.addLast(cx);
+                        yq.addLast(cy + 1);
+                        depthq.addLast(depth + 1);
+                    }
+                    if (inHashRange(cx, cy - 1)) {
+                        xq.addLast(cx);
+                        yq.addLast(cy - 1);
+                        depthq.addLast(depth + 1);
+                    }
+                }
+
+                // need to select units in targets that are suitable, firstly
+                // secondly, of those units in targets that are suitable
+                // want to return good choice of target
+            }
+            spatialCache[rxp][ryp] = (target == null) ? 0 : target.id();
+            return target;
+        }
+
+        public int computePriority(Unit u) {
+            return ((int) -u.health()) +
+                    100 * (u.unitType() == UnitType.Ranger ? 1 : 0);
+        }
+
+        public boolean inHashRange(int x, int y) {
+            return x >= 0 && y >= 0 && x < ww && y < hh;
+        }
+
+        // Clear hash so can be recreated on new round
+        public void clear() {
+            for (int i = 0; i < ww; ++i) {
+                for (int j = 0; j < hh; ++j) {
+                    spatialHash[i][j].clear();
+                    spatialCache[i][j] = 0;
+                }
+            }
+        }
+    }
+    class WorkerNearestNeighbor {
+        // Spatial Hashing
+        // Needs some mechanism of marking a unit as dead
+        // How to do...
+        int CELL_SIZE = 5;
+        HashSet<Integer>[][] spatialHash;
+        int[][] spatialCache;
+        int SEARCH_DEPTH = 2;
+        int ww; // spatial hash width
+        int hh; // spatial hash height
+
+        public WorkerNearestNeighbor() {
+            ww = (width / CELL_SIZE) + 1;
+            hh = (height / CELL_SIZE) + 1;
+            spatialHash = new HashSet[ww][hh];
+            spatialCache = new int[ww][hh];
+            for (int i = 0; i < ww; ++i) {
+                for (int j = 0; j < hh; ++j) {
+                    spatialHash[i][j] = new HashSet<>();
+                }
+            }
+        }
+
+        // adds opposing units on maps to spatial hash
+        public void add(Unit u) {
+            if (u.location().isOnMap() && u.team() == opponent) {
+                MapLocation mloc = u.location().mapLocation();
+                int x = mloc.getX(), y = mloc.getY();
+                int xp = x / CELL_SIZE, yp = y / CELL_SIZE;
+                spatialHash[xp][yp].add(u.id());
+            }
+        }
+
+        // returns good attack target for ranger
+        public Unit neighbor(Unit r) {
+            int minRange = 0;
+            int maxRange = (int) r.visionRange();
             MapLocation rloc = r.location().mapLocation();
             int rx = rloc.getX(), ry = rloc.getY();
             int rxp = rx / CELL_SIZE, ryp = ry / CELL_SIZE;
@@ -321,8 +469,10 @@ public class Player {
     Ledger opposition;
     Metric metric;
     RangerNearestNeighbor rnn;
+    WorkerNearestNeighbor wnn;
     Random rnd;
-    MapLocation knownEnemy[]; // 5x5 blocks where we are under attack
+    MapLocation knownEnemy[], knownEnemy2[];
+    Integer keTurn[], ke2Turn[];
     HashSet<Integer> attackRangers, baseRangers;
     int rangerCounter;
 
@@ -378,7 +528,11 @@ public class Player {
         ledger = new Ledger();
         metric = new Metric();
         rnn = new RangerNearestNeighbor();
+        wnn = new WorkerNearestNeighbor();
         knownEnemy = new MapLocation[10];
+        knownEnemy2 = new MapLocation[10];
+        keTurn = new Integer[10];
+        ke2Turn = new Integer[10];
         attackRangers = new HashSet<>();
         baseRangers = new HashSet<>();
         rangerCounter = 0;
@@ -406,13 +560,17 @@ public class Player {
     private void research() {
         if (planet == Planet.Earth) {
             gc.queueResearch(UnitType.Worker);
+            gc.queueResearch(UnitType.Worker);
+            gc.queueResearch(UnitType.Ranger);
             gc.queueResearch(UnitType.Ranger);
             gc.queueResearch(UnitType.Rocket);
-            gc.queueResearch(UnitType.Ranger);
-            gc.queueResearch(UnitType.Ranger);
-            gc.queueResearch(UnitType.Healer);
-            gc.queueResearch(UnitType.Healer);
-            gc.queueResearch(UnitType.Healer);
+            gc.queueResearch(UnitType.Rocket);
+            gc.queueResearch(UnitType.Rocket);
+            gc.queueResearch(UnitType.Worker);
+//            gc.queueResearch(UnitType.Ranger);
+//            gc.queueResearch(UnitType.Healer);
+//            gc.queueResearch(UnitType.Healer);
+//            gc.queueResearch(UnitType.Healer);
         }
     }
 
@@ -423,6 +581,7 @@ public class Player {
         blueprints.clear();
         rockets.clear();
         rnn.clear();
+        wnn.clear();
 //        opposition.clear();
 
         for (int i = 0; i < width; ++i)
@@ -436,6 +595,7 @@ public class Player {
                 MapLocation m = u.location().mapLocation();
                 unitMap[m.getX()][m.getY()] = u;
                 rnn.add(u);
+                wnn.add(u);
             }
 
             if (u.team() == team) {
@@ -497,6 +657,15 @@ public class Player {
                 DESIRED_WORKERS = 12;
 
             int id = u.id();
+
+            Unit neighbor = wnn.neighbor(gc.unit(id));
+            if (neighbor != null) {
+                // add this to the known locations of enemies we are currently attacking
+                for(int i=9; i>0; --i) knownEnemy2[i] = knownEnemy2[i-1];
+                for(int i=9; i>0; --i) ke2Turn[i] = ke2Turn[i-1];
+                knownEnemy2[0] = neighbor.location().mapLocation();
+                ke2Turn[0] = (int)gc.round();
+            }
             MapLocation wloc = u.location().mapLocation();
             ArrayList<Direction> dirs = availableDirections(wloc);
             Direction dir = dirs.size() > 0 ? dirs.get(0) : Direction.Center;
@@ -507,7 +676,7 @@ public class Player {
             } else if (dirs.size() > 0 && gc.round() > 4 && gc.canBlueprint(id, UnitType.Factory, dir) && (ledger.numFactories + ledger.numFactoryBlueprints) < DESIRED_FACTORIES) {
                 gc.blueprint(id, UnitType.Factory, dir);
                 ++ledger.numFactoryBlueprints;
-            } else if (gc.round() > 100 && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Factory, dir)) {
+            } else if (gc.round() > 100 && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Rocket, dir)) {
                 gc.blueprint(id, UnitType.Rocket, dir);
                 ++ledger.numRocketBlueprints;
                 System.out.println("Rocket Blueprinted");
@@ -599,7 +768,7 @@ public class Player {
             int id = u.id();
             if (u.structureIsBuilt() == 0)
                 return;
-            if (gc.karbonite() > 120 && gc.canProduceRobot(id, UnitType.Ranger) && ledger.numRangers < DESIRED_RANGERS) {
+            if (gc.karbonite() > 170 && gc.canProduceRobot(id, UnitType.Ranger) && ledger.numRangers < DESIRED_RANGERS) {
                 gc.produceRobot(id, UnitType.Ranger);
                 ++ledger.numRangers;
             }
@@ -667,7 +836,9 @@ public class Player {
                 if (neighbor != null) {
                     // add this to the known locations of enemies we are currently attacking
                     for(int i=9; i>0; --i) knownEnemy[i] = knownEnemy[i-1];
-                    knownEnemy[0] = u.location().mapLocation();
+                    for(int i=9; i>0; --i) keTurn[i] = keTurn[i-1];
+                    knownEnemy[0] = neighbor.location().mapLocation();
+                    keTurn[0] = (int)gc.round();
 
                     int nid = neighbor.id();
                     if (gc.canAttack(id, nid)) {
@@ -678,16 +849,64 @@ public class Player {
             }
 
             if(attackRangers.contains(id)) {
-                if(!attacking && knownEnemy[0]!=null) { // not currently attacking, move to an embattled location
-                    StaticPath path = getStaticPath(rloc, knownEnemy[0]);
+                System.out.print(gc.round() + " - " + gc.getTimeLeftMs() + "ms => Attacker " + id + ": ");
+                if(attacking) System.out.println("ENEMY NEARBY; ATTACKING");
+                int attackCase = -1;
+                if(attacking) attackCase = 3;
+                else if(knownEnemy[0]!=null && keTurn[0]>=gc.round()-10) attackCase = 1;
+                else if(knownEnemy2[0]!=null && ke2Turn[0]>=gc.round()-10) attackCase = 2;
+                if(attackCase==1) {
+                    StaticPath path = getStaticPath2(rloc, knownEnemy[0]);
                     if(path!=null) {
+                        System.out.println("Moving to knownEnemy[0]");
                         Direction d = rloc.directionTo(path.getLoc());
                         if (gc.canMove(id, d) && gc.isMoveReady(id)) {
                             gc.moveRobot(id, d);
                             updateLocation(id, rloc, path.getLoc());
                         }
+                    } else {
+                        if(rnd.nextDouble()<0.3) {
+                            System.out.println("knownEnemy[0], no path = random direction");
+                            ArrayList<Direction> dirs = availableDirections(rloc);
+                            if (dirs.size() > 0) {
+                                Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
+                                if (gc.canMove(id, dir) && gc.isMoveReady(id)) {
+                                    gc.moveRobot(id, dir);
+                                    updateLocation(id, rloc, rloc.add(dir));
+                                }
+                            }
+                        } else {
+                            System.out.println("knownEnemy[0], no path = don't move");
+                        }
                     }
-                } else { // either attacking or there are no known enemies
+                }
+                else if(attackCase==2) {
+                    StaticPath path = getStaticPath2(rloc, knownEnemy2[0]);
+                    if(path!=null) {
+                        System.out.println("Moving to knownEnemy2[0]");
+                        Direction d = rloc.directionTo(path.getLoc());
+                        if (gc.canMove(id, d) && gc.isMoveReady(id)) {
+                            gc.moveRobot(id, d);
+                            updateLocation(id, rloc, path.getLoc());
+                        }
+                    } else {
+                        if(rnd.nextDouble()<0.3) {
+                            System.out.println("knownEnemy2[0], no path = random direction");
+                            ArrayList<Direction> dirs = availableDirections(rloc);
+                            if (dirs.size() > 0) {
+                                Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
+                                if (gc.canMove(id, dir) && gc.isMoveReady(id)) {
+                                    gc.moveRobot(id, dir);
+                                    updateLocation(id, rloc, rloc.add(dir));
+                                }
+                            }
+                        } else {
+                            System.out.println("knownEnemy2[0], no path = don't move");
+                        }
+                    }
+                }
+                else { // not case 1 or 2; move randomly
+                    System.out.println("Random Directions");
                     ArrayList<Direction> dirs = availableDirections(rloc);
                     if (dirs.size() > 0) {
                         Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
@@ -739,9 +958,10 @@ public class Player {
                 }
             }
             else {
-                if(attackRangers.size()>baseRangers.size()/2) {
-                    baseRangers.add(id);
-                } else attackRangers.add(id);
+                if(baseRangers.size()>attackRangers.size()/4) {
+                    attackRangers.add(id);
+                } else baseRangers.add(id);
+//                attackRangers.add(id);
             }
         }
         catch (Exception e) {e.printStackTrace();}
@@ -811,6 +1031,50 @@ public class Player {
             int g = e.cost - StaticPath.getCost(e.path.getLoc(), finish);
             for (MapLocation m: adjacent.get(ci)) {
                 if ((isPassable(m) || mtoi(m) == fi) && !visited.contains(mtoi(m))) {
+                    StaticPath newPath = new StaticPath(m, e.path);
+                    StaticPath.StaticPathEntry newEntry = new StaticPath.StaticPathEntry((g + 1) +
+                            StaticPath.getCost(m, finish), newPath);
+                    pq.add(newEntry);
+                }
+            }
+        }
+        return null;
+    }
+
+    public int dsqbtw(int p1, int p2) {
+        return (p1/height - p2/height) * (p1/height - p2/height) + (p1%height - p2%height) * (p1%height - p2%height);
+    }
+
+    public StaticPath getStaticPath2(MapLocation start, MapLocation finish) {
+        int si = mtoi(start), fi = mtoi(finish);
+        PriorityQueue<StaticPath.StaticPathEntry> pq = new PriorityQueue<>();
+        StaticPath startPath = new StaticPath(start);
+        HashSet<Integer> visited = new HashSet<>();
+        StaticPath.StaticPathEntry b = new StaticPath.StaticPathEntry(StaticPath.getCost(start, finish), startPath);
+        pq.add(b);
+        while(!pq.isEmpty()) {
+            StaticPath.StaticPathEntry e = pq.remove();
+            MapLocation current = e.path.getLoc();
+            int ci = mtoi(current);
+            if (visited.contains(ci))
+                continue;
+            visited.add(ci);
+            if (dsqbtw(ci, fi) <= 40) {
+                StaticPath p = e.path;
+                StaticPath t = p.getNext();
+                p.setNext(null);
+                while (t != null) {
+                    StaticPath r = t.getNext();
+                    t.setNext(p);
+                    p = t;
+                    t = r;
+                }
+                return p.getNext();
+            }
+            int g = e.cost - StaticPath.getCost(e.path.getLoc(), finish);
+
+            for (MapLocation m: adjacent.get(ci)) {
+                if ((dsqbtw(mtoi(m), si)>10 || unitMap[m.getX()][m.getY()] == null || mtoi(m) == fi) && (map.isPassableTerrainAt(m)>0) && !visited.contains(mtoi(m))) {
                     StaticPath newPath = new StaticPath(m, e.path);
                     StaticPath.StaticPathEntry newEntry = new StaticPath.StaticPathEntry((g + 1) +
                             StaticPath.getCost(m, finish), newPath);
