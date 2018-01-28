@@ -4,11 +4,16 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class Player {
-    int DESIRED_WORKERS = 8;
+    int DESIRED_WORKERS = 5;
     int DESIRED_FACTORIES = 4;
     int DESIRED_RANGERS = 50;
     int STAGGER = 8; //
     int WINDOW_SIZE = 32;
+    int lastRocketRound;
+    int lastFactoryRound;
+    boolean wantRocket;
+    boolean wantFactory;
+
 
     class Purpose {
         int roundCreated;
@@ -459,6 +464,7 @@ public class Player {
     HashMap<Integer, ArrayList<MapLocation>> adjacent;
     ArrayList<Unit> blueprints;
     ArrayList<Unit> rockets;
+    ArrayList<Unit> workerRockets;
     public int mtoi (MapLocation l) { return (height * l.getX() + l.getY()); }
     public MapLocation itom (int i) { return new MapLocation(planet, i / height, i % height); }
     int width;
@@ -525,6 +531,7 @@ public class Player {
         pathCache = new HashMap<>();
         blueprints = new ArrayList<>();
         rockets = new ArrayList<>();
+        workerRockets = new ArrayList<>();
         ledger = new Ledger();
         metric = new Metric();
         rnn = new RangerNearestNeighbor();
@@ -562,15 +569,12 @@ public class Player {
             gc.queueResearch(UnitType.Worker);
             gc.queueResearch(UnitType.Worker);
             gc.queueResearch(UnitType.Ranger);
+            gc.queueResearch(UnitType.Rocket);
+            gc.queueResearch(UnitType.Ranger);
             gc.queueResearch(UnitType.Ranger);
             gc.queueResearch(UnitType.Rocket);
             gc.queueResearch(UnitType.Rocket);
-            gc.queueResearch(UnitType.Rocket);
             gc.queueResearch(UnitType.Worker);
-//            gc.queueResearch(UnitType.Ranger);
-//            gc.queueResearch(UnitType.Healer);
-//            gc.queueResearch(UnitType.Healer);
-//            gc.queueResearch(UnitType.Healer);
         }
     }
 
@@ -580,6 +584,7 @@ public class Player {
         ledger.clear();
         blueprints.clear();
         rockets.clear();
+        workerRockets.clear();
         rnn.clear();
         wnn.clear();
 //        opposition.clear();
@@ -605,8 +610,21 @@ public class Player {
                 ledger.updateWithUnit(u);
                 if ((u.unitType() == UnitType.Factory || u.unitType() == UnitType.Rocket) && u.structureIsBuilt() == 0)
                     blueprints.add(u);
-                else if (u.unitType() == UnitType.Rocket)
-                    rockets.add(u);
+                else if (u.unitType() == UnitType.Rocket) {
+                    int maxCapacity = (int) u.structureMaxCapacity();
+                    VecUnitID garrison = u.structureGarrison();
+                    if (garrison.size() < maxCapacity) {
+                        rockets.add(u);
+                        int numWorkers = 0;
+                        for (int k = 0; k < garrison.size(); ++k) {
+                            Unit kunit = gc.unit(garrison.get(k));
+                            if (kunit.unitType() == UnitType.Worker)
+                                ++numWorkers;
+                        }
+                        if (numWorkers < 2)
+                            workerRockets.add(u);
+                    }
+                }
             }
 //            else {
 //                opposition.updateWithUnit(u);
@@ -653,11 +671,13 @@ public class Player {
             if (!u.location().isOnMap())
                 return;
 
+            if (ledger.numFactories + ledger.numFactoryBlueprints >=  DESIRED_FACTORIES / 2)
+                DESIRED_WORKERS = 8;
+
             if (gc.round() == 80)
                 DESIRED_WORKERS = 12;
 
             int id = u.id();
-
             Unit neighbor = wnn.neighbor(gc.unit(id));
             if (neighbor != null) {
                 // add this to the known locations of enemies we are currently attacking
@@ -670,15 +690,34 @@ public class Player {
             ArrayList<Direction> dirs = availableDirections(wloc);
             Direction dir = dirs.size() > 0 ? dirs.get(0) : Direction.Center;
 
+            if (gc.round() > 4 && gc.round() <= 50 && (ledger.numFactories + ledger.numFactoryBlueprints) < DESIRED_FACTORIES) {
+                wantFactory = true;
+            }
+            else if (gc.round() > 50 && gc.round() > 25 + lastFactoryRound && (ledger.numFactories + ledger.numFactoryBlueprints) < DESIRED_FACTORIES) {
+                wantFactory = true;
+            }
+            else {
+                wantFactory = false;
+            }
+
+            if (gc.round() > 200 && (gc.round() > 55 + lastRocketRound) || gc.round() > 694) {
+                wantRocket = true;
+            }
+            else {
+                wantRocket = false;
+            }
+
             if (dirs.size() > 0 && gc.canReplicate(id, dir) && ledger.numWorkers < DESIRED_WORKERS) {
                 gc.replicate(id, dir);
                 ++ledger.numWorkers;
             } else if (dirs.size() > 0 && gc.round() > 4 && gc.canBlueprint(id, UnitType.Factory, dir) && (ledger.numFactories + ledger.numFactoryBlueprints) < DESIRED_FACTORIES) {
                 gc.blueprint(id, UnitType.Factory, dir);
                 ++ledger.numFactoryBlueprints;
-            } else if (gc.round() > 100 && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Rocket, dir)) {
+                lastFactoryRound = (int) gc.round();
+            } else if (gc.round() > 200 && (gc.round() > 55 + lastRocketRound) && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Rocket, dir)) {
                 gc.blueprint(id, UnitType.Rocket, dir);
                 ++ledger.numRocketBlueprints;
+                lastRocketRound = (int) gc.round();
                 System.out.println("Rocket Blueprinted");
             }
 
@@ -693,6 +732,19 @@ public class Player {
                 }
             }
 
+            long dsq2 = Integer.MAX_VALUE;
+            MapLocation targetLocation = null;
+            Unit target = null;
+            for (Unit b : workerRockets) {
+                if (b.location().mapLocation().distanceSquaredTo(wloc) < dsq2) {
+                    targetLocation = b.location().mapLocation();
+                    dsq2 = targetLocation.distanceSquaredTo(wloc);
+                    target = b;
+                }
+            }
+
+
+            //continue
             if (gc.isMoveReady(id) && blueprint != null && wloc.distanceSquaredTo(bloc) > 2 && wloc.distanceSquaredTo(bloc) <= 144) {
                 StaticPath path = getStaticPath(wloc, bloc); // very inefficient!!!
                 if (path != null) { // shouldn't be null but sometimes is
@@ -721,8 +773,25 @@ public class Player {
                     }
                     catch (Exception e) {}
                 }
-
-                if (closest != null) {
+                if (target != null && target.structureGarrison().size() < target.structureMaxCapacity()) {
+                    if(dsq2>2 && dsq2<=121) {
+                        StaticPath path = getStaticPath(wloc, targetLocation); // very inefficient!!!
+                        if (path != null) { // shouldn't be null but sometimes is
+                            Direction d = wloc.directionTo(path.getLoc());
+                            if (gc.canMove(id, d)) {
+                                gc.moveRobot(id, d);
+                                updateLocation(id, wloc, path.getLoc());
+                            }
+                        }
+                    }
+                    else if(dsq2<=2 && gc.canLoad(target.id(), id)) {
+                        gc.load(target.id(), id);
+                        unitMap[wloc.getX()][wloc.getY()] = null;
+                        System.out.println("Loaded onto rocket");
+                        return;
+                    }
+                }
+                else if (closest != null) {
                     if (maxsq > 2) {
                         StaticPath path = getStaticPath(wloc, closest); // very inefficient!!!
                         if (path != null) {
@@ -768,7 +837,12 @@ public class Player {
             int id = u.id();
             if (u.structureIsBuilt() == 0)
                 return;
-            if (gc.karbonite() > 170 && gc.canProduceRobot(id, UnitType.Ranger) && ledger.numRangers < DESIRED_RANGERS) {
+            int cutoff = 100;
+            if (wantRocket)
+                cutoff = 190;
+            if (wantFactory)
+                cutoff = 240;
+            if (gc.karbonite() >= cutoff && gc.canProduceRobot(id, UnitType.Ranger) && ledger.numRangers < DESIRED_RANGERS) {
                 gc.produceRobot(id, UnitType.Ranger);
                 ++ledger.numRangers;
             }
@@ -928,7 +1002,7 @@ public class Player {
                 }
                 if(gc.isMoveReady(id)) {
                     if(target!=null) {
-                        if(dsq>2 && dsq<=100 && target.structureGarrison().size() < target.structureMaxCapacity()) {
+                        if(dsq>2 && target.structureGarrison().size() < target.structureMaxCapacity()) {
                             StaticPath path = getStaticPath(rloc, targetLocation); // very inefficient!!!
                             if (path != null) { // shouldn't be null but sometimes is
                                 Direction d = rloc.directionTo(path.getLoc());
