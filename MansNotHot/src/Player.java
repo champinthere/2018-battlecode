@@ -6,7 +6,7 @@ import java.util.stream.Collectors;
 public class Player {
     int DESIRED_WORKERS = 5;
     int DESIRED_FACTORIES = 4;
-    int DESIRED_RANGERS = 50;
+    int DESIRED_RANGERS = 200;
     int STAGGER = 8; //
     int WINDOW_SIZE = 32;
     int lastRocketRound;
@@ -482,6 +482,7 @@ public class Player {
     HashSet<Integer> attackRangers, baseRangers;
     int rangerCounter;
     HashSet<Integer> wrockets;
+    int numBaseRangers;
 
     public MapLocation randomMarsLoc() {
         int x = rnd.nextInt(width);
@@ -545,6 +546,7 @@ public class Player {
         attackRangers = new HashSet<>();
         baseRangers = new HashSet<>();
         rangerCounter = 0;
+        numBaseRangers = 0;
         for (int i = 0; i < width; ++i) {
             for (int j = 0; j < height; ++j) {
                 ArrayList<MapLocation> nearby = new ArrayList<>();
@@ -559,6 +561,11 @@ public class Player {
                 adjacent.put(mtoi(m), nearby);
             }
         }
+
+        // consider map size
+        if(planet==Planet.Earth) DESIRED_WORKERS = (((int)Math.sqrt(width * height)) + 10)/6;
+        else DESIRED_WORKERS = 5;
+
 
         research();
         updateState();
@@ -581,6 +588,10 @@ public class Player {
     }
 
     public void updateState() {
+
+        if(planet == Planet.Earth && gc.round()<60 && gc.round()%10==0) DESIRED_WORKERS += 2;
+        if(planet == Planet.Mars && gc.round()>740) DESIRED_WORKERS = 400;
+
         VecUnit allUnits = gc.units();
         int round = (int) gc.round();
         ledger.clear();
@@ -606,6 +617,7 @@ public class Player {
             }
 
             if (u.team() == team) {
+                if(baseRangers.contains(u.id())) ++numBaseRangers;
                 idMap.put(id, u);
                 if (!actions.containsKey(id))
                     actions.put(id, new Purpose(round, ""));
@@ -629,6 +641,9 @@ public class Player {
                 }
             }
             lastUpdated.put(id, round);
+        }
+        if(gc.karbonite()>400) {
+            DESIRED_FACTORIES = ledger.numFactories + ledger.numFactoryBlueprints + 2;
         }
     }
 
@@ -672,14 +687,14 @@ public class Player {
             if (!u.location().isOnMap())
                 return;
 
-            if (ledger.numFactories + ledger.numFactoryBlueprints >=  DESIRED_FACTORIES / 2)
-                DESIRED_WORKERS = 8;
-
-            if (gc.round() >= 80)
-                DESIRED_WORKERS = 12;
-
-            if (gc.round() >= 750)
-                DESIRED_WORKERS = 400;
+//            if (ledger.numFactories + ledger.numFactoryBlueprints >=  DESIRED_FACTORIES / 2)
+//                DESIRED_WORKERS = 8;
+//
+//            if (gc.round() >= 80)
+//                DESIRED_WORKERS = 12;
+//
+//            if (gc.round() >= 750)
+//                DESIRED_WORKERS = 400;
 
             int id = u.id();
             Unit neighbor = wnn.neighbor(gc.unit(id));
@@ -704,7 +719,7 @@ public class Player {
                 wantFactory = false;
             }
 
-            if (gc.round() > 200 && (gc.round() > 55 + lastRocketRound) || gc.round() > 694) {
+            if (gc.round() > 200 && ((gc.round() > 55 + lastRocketRound) || gc.round() > 675 || numBaseRangers>5)) {
                 wantRocket = true;
             }
             else {
@@ -715,11 +730,11 @@ public class Player {
             if (dirs.size() > 0 && gc.canReplicate(id, dir) && ledger.numWorkers < DESIRED_WORKERS) {
                 gc.replicate(id, dir);
                 ++ledger.numWorkers;
-            } else if (planet == Planet.Earth && dirs.size() > 0 && gc.round() > 4 && gc.canBlueprint(id, UnitType.Factory, dir) && (ledger.numFactories + ledger.numFactoryBlueprints) < DESIRED_FACTORIES) {
+            } else if (planet == Planet.Earth && dirs.size() > 0 && wantFactory && gc.canBlueprint(id, UnitType.Factory, dir)) {
                 gc.blueprint(id, UnitType.Factory, dir);
                 ++ledger.numFactoryBlueprints;
                 lastFactoryRound = (int) gc.round();
-            } else if (planet == planet.Earth && gc.round() > 200 && (gc.round() > 55 + lastRocketRound) && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Rocket, dir)) {
+            } else if (planet == planet.Earth && wantRocket && gc.canBlueprint(id, UnitType.Rocket, dir)) {
                 gc.blueprint(id, UnitType.Rocket, dir);
                 ++ledger.numRocketBlueprints;
                 lastRocketRound = (int) gc.round();
@@ -871,7 +886,7 @@ public class Player {
             if (u.structureIsBuilt() == 0)
                 return;
             if (planet == Planet.Earth) {
-                if (u.structureGarrison().size() < u.structureMaxCapacity())
+                if (u.structureGarrison().size() < u.structureMaxCapacity() && gc.round() < 748)
                     return;
                 MapLocation launchLocation = randomMarsLoc();
                 gc.launchRocket(u.id(), launchLocation);
@@ -928,6 +943,11 @@ public class Player {
             }
 
             if(attackRangers.contains(id)) {
+                if (planet == Planet.Earth && gc.round() > 699) {
+                    attackRangers.remove(id);
+                    baseRangers.add(id);
+                    return;
+                }
                 int attackCase = -1;
                 if(attacking) attackCase = 3;
                 else if(knownEnemy[0]!=null && keTurn[0]>=gc.round()-10) attackCase = 1;
@@ -1034,10 +1054,13 @@ public class Player {
                 if(planet==Planet.Earth) {
                     int ratio = 4;
                     if(round>600) ratio = 2;
-                    if(round>700) ratio = 1;
-                    if (baseRangers.size() > attackRangers.size() / ratio) {
+                    if (baseRangers.size() > attackRangers.size() / ratio && round<700) {
                         attackRangers.add(id);
-                    } else baseRangers.add(id);
+                    }
+                    else {
+                        baseRangers.add(id);
+                        ++numBaseRangers;
+                    }
                 } else {
                     attackRangers.add(id);
                 }
