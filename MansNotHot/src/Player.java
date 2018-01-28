@@ -1032,10 +1032,16 @@ public class Player {
                 }
             }
             else {
-                if(baseRangers.size()>attackRangers.size()/4) {
+                if(planet==Planet.Earth) {
+                    int ratio = 4;
+                    if(round>600) ratio = 2;
+                    if(round>700) ratio = 1;
+                    if (baseRangers.size() > attackRangers.size() / ratio) {
+                        attackRangers.add(id);
+                    } else baseRangers.add(id);
+                } else {
                     attackRangers.add(id);
-                } else baseRangers.add(id);
-//                attackRangers.add(id);
+                }
             }
         }
         catch (Exception e) {e.printStackTrace();}
