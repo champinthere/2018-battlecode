@@ -500,7 +500,7 @@ public class Player {
             } else if (dirs.size() > 0 && gc.round() > 4 && gc.canBlueprint(id, UnitType.Factory, dir) && (ledger.numFactories + ledger.numFactoryBlueprints) < DESIRED_FACTORIES) {
                 gc.blueprint(id, UnitType.Factory, dir);
                 ++ledger.numFactoryBlueprints;
-            } else if (gc.round() > 100 && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Factory, dir)) {
+            } else if (gc.round() > 100 && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Rocket, dir)) {
                 gc.blueprint(id, UnitType.Rocket, dir);
                 ++ledger.numRocketBlueprints;
                 System.out.println("Rocket Blueprinted");
