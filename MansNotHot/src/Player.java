@@ -481,6 +481,7 @@ public class Player {
     Integer keTurn[], ke2Turn[];
     HashSet<Integer> attackRangers, baseRangers;
     int rangerCounter;
+    HashSet<Integer> wrockets;
 
     public MapLocation randomMarsLoc() {
         int x = rnd.nextInt(width);
@@ -532,6 +533,7 @@ public class Player {
         blueprints = new ArrayList<>();
         rockets = new ArrayList<>();
         workerRockets = new ArrayList<>();
+        wrockets = new HashSet<>();
         ledger = new Ledger();
         metric = new Metric();
         rnn = new RangerNearestNeighbor();
@@ -585,9 +587,9 @@ public class Player {
         blueprints.clear();
         rockets.clear();
         workerRockets.clear();
+        wrockets.clear();
         rnn.clear();
         wnn.clear();
-//        opposition.clear();
 
         for (int i = 0; i < width; ++i)
             for (int j = 0; j < height; ++j)
@@ -610,7 +612,7 @@ public class Player {
                 ledger.updateWithUnit(u);
                 if ((u.unitType() == UnitType.Factory || u.unitType() == UnitType.Rocket) && u.structureIsBuilt() == 0)
                     blueprints.add(u);
-                else if (u.unitType() == UnitType.Rocket) {
+                else if (u.unitType() == UnitType.Rocket && planet == Planet.Earth) {
                     int maxCapacity = (int) u.structureMaxCapacity();
                     VecUnitID garrison = u.structureGarrison();
                     if (garrison.size() < maxCapacity) {
@@ -626,16 +628,15 @@ public class Player {
                     }
                 }
             }
-//            else {
-//                opposition.updateWithUnit(u);
-//            }
-
             lastUpdated.put(id, round);
         }
     }
 
     public void run() {
         updateState();
+        if (wantRocket) {
+            System.out.println(gc.round() + " " + "want rocket");
+        }
         ArrayList<Integer> toBeRemoved = new ArrayList<Integer>();
         int round = (int) gc.round();
         for (int unitid: actions.keySet()) {
@@ -674,8 +675,11 @@ public class Player {
             if (ledger.numFactories + ledger.numFactoryBlueprints >=  DESIRED_FACTORIES / 2)
                 DESIRED_WORKERS = 8;
 
-            if (gc.round() == 80)
+            if (gc.round() >= 80)
                 DESIRED_WORKERS = 12;
+
+            if (gc.round() >= 750)
+                DESIRED_WORKERS = 400;
 
             int id = u.id();
             Unit neighbor = wnn.neighbor(gc.unit(id));
@@ -707,18 +711,18 @@ public class Player {
                 wantRocket = false;
             }
 
+
             if (dirs.size() > 0 && gc.canReplicate(id, dir) && ledger.numWorkers < DESIRED_WORKERS) {
                 gc.replicate(id, dir);
                 ++ledger.numWorkers;
-            } else if (dirs.size() > 0 && gc.round() > 4 && gc.canBlueprint(id, UnitType.Factory, dir) && (ledger.numFactories + ledger.numFactoryBlueprints) < DESIRED_FACTORIES) {
+            } else if (planet == Planet.Earth && dirs.size() > 0 && gc.round() > 4 && gc.canBlueprint(id, UnitType.Factory, dir) && (ledger.numFactories + ledger.numFactoryBlueprints) < DESIRED_FACTORIES) {
                 gc.blueprint(id, UnitType.Factory, dir);
                 ++ledger.numFactoryBlueprints;
                 lastFactoryRound = (int) gc.round();
-            } else if (gc.round() > 200 && (gc.round() > 55 + lastRocketRound) && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Rocket, dir)) {
+            } else if (planet == planet.Earth && gc.round() > 200 && (gc.round() > 55 + lastRocketRound) && ledger.numRockets + ledger.numRocketBlueprints < 3 && gc.canBlueprint(id, UnitType.Rocket, dir)) {
                 gc.blueprint(id, UnitType.Rocket, dir);
                 ++ledger.numRocketBlueprints;
                 lastRocketRound = (int) gc.round();
-                System.out.println("Rocket Blueprinted");
             }
 
             long dsq = Integer.MAX_VALUE;
@@ -784,9 +788,10 @@ public class Player {
                             }
                         }
                     }
-                    else if(dsq2<=2 && gc.canLoad(target.id(), id)) {
+                    else if(dsq2<=2 && gc.canLoad(target.id(), id) && !wrockets.contains(target.id())) {
                         gc.load(target.id(), id);
                         unitMap[wloc.getX()][wloc.getY()] = null;
+                        wrockets.add(target.id());
                         System.out.println("Loaded onto rocket");
                         return;
                     }
@@ -923,8 +928,6 @@ public class Player {
             }
 
             if(attackRangers.contains(id)) {
-                System.out.print(gc.round() + " - " + gc.getTimeLeftMs() + "ms => Attacker " + id + ": ");
-                if(attacking) System.out.println("ENEMY NEARBY; ATTACKING");
                 int attackCase = -1;
                 if(attacking) attackCase = 3;
                 else if(knownEnemy[0]!=null && keTurn[0]>=gc.round()-10) attackCase = 1;
@@ -932,7 +935,6 @@ public class Player {
                 if(attackCase==1) {
                     StaticPath path = getStaticPath2(rloc, knownEnemy[0]);
                     if(path!=null) {
-                        System.out.println("Moving to knownEnemy[0]");
                         Direction d = rloc.directionTo(path.getLoc());
                         if (gc.canMove(id, d) && gc.isMoveReady(id)) {
                             gc.moveRobot(id, d);
@@ -940,7 +942,6 @@ public class Player {
                         }
                     } else {
                         if(rnd.nextDouble()<0.3) {
-                            System.out.println("knownEnemy[0], no path = random direction");
                             ArrayList<Direction> dirs = availableDirections(rloc);
                             if (dirs.size() > 0) {
                                 Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
@@ -950,14 +951,12 @@ public class Player {
                                 }
                             }
                         } else {
-                            System.out.println("knownEnemy[0], no path = don't move");
                         }
                     }
                 }
                 else if(attackCase==2) {
                     StaticPath path = getStaticPath2(rloc, knownEnemy2[0]);
                     if(path!=null) {
-                        System.out.println("Moving to knownEnemy2[0]");
                         Direction d = rloc.directionTo(path.getLoc());
                         if (gc.canMove(id, d) && gc.isMoveReady(id)) {
                             gc.moveRobot(id, d);
@@ -965,7 +964,6 @@ public class Player {
                         }
                     } else {
                         if(rnd.nextDouble()<0.3) {
-                            System.out.println("knownEnemy2[0], no path = random direction");
                             ArrayList<Direction> dirs = availableDirections(rloc);
                             if (dirs.size() > 0) {
                                 Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
@@ -975,12 +973,10 @@ public class Player {
                                 }
                             }
                         } else {
-                            System.out.println("knownEnemy2[0], no path = don't move");
                         }
                     }
                 }
                 else { // not case 1 or 2; move randomly
-                    System.out.println("Random Directions");
                     ArrayList<Direction> dirs = availableDirections(rloc);
                     if (dirs.size() > 0) {
                         Direction dir = dirs.get((int) (rnd.nextDouble() * dirs.size()));
@@ -992,7 +988,11 @@ public class Player {
                 }
             }
             else if(baseRangers.contains(id)) {
-
+                if (planet == Planet.Mars) {
+                    attackRangers.add(id);
+                    baseRangers.remove(id);
+                    return;
+                }
                 for (Unit b : rockets) {
                     if (b.location().mapLocation().distanceSquaredTo(rloc) < dsq) {
                         targetLocation = b.location().mapLocation();
@@ -1015,7 +1015,6 @@ public class Player {
                         else if(dsq<=2 && gc.canLoad(target.id(), id)) {
                             gc.load(target.id(), id);
                             unitMap[rloc.getX()][rloc.getY()] = null;
-                            System.out.println("Loaded onto rocket");
                             return;
                         }
                     }
