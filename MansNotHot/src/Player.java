@@ -943,7 +943,7 @@ public class Player {
             }
 
             if(attackRangers.contains(id)) {
-                if (planet == Planet.Earth && gc.round() > 699) {
+                if (planet == Planet.Earth && gc.round() > 674) {
                     attackRangers.remove(id);
                     baseRangers.add(id);
                     return;
@@ -1054,7 +1054,7 @@ public class Player {
                 if(planet==Planet.Earth) {
                     int ratio = 4;
                     if(round>600) ratio = 2;
-                    if (baseRangers.size() > attackRangers.size() / ratio && round<700) {
+                    if (baseRangers.size() > attackRangers.size() / ratio && round<675) {
                         attackRangers.add(id);
                     }
                     else {
