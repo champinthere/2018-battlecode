@@ -914,7 +914,7 @@ public class Player {
             if (u.structureIsBuilt() == 0)
                 return;
             if (planet == Planet.Earth) {
-                if (u.structureGarrison().size() < u.structureMaxCapacity() && gc.round() < 748 && u.health()>0.6*u.maxHealth())
+                if (u.structureGarrison().size() < u.structureMaxCapacity() && gc.round() < 748 && u.health()>0.7*u.maxHealth())
                     return;
                 MapLocation launchLocation = randomMarsLoc();
                 gc.launchRocket(u.id(), launchLocation);
