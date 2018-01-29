@@ -610,6 +610,9 @@ public class Player {
                 DESIRED_WORKERS_ADD += DESIRED_WORKERS_INC;
                 DESIRED_WORKERS = (int)DESIRED_WORKERS_ADD;
             }
+            else if(gc.round()>120) {
+                DESIRED_WORKERS = 5;
+            }
         }
         else if(planet == Planet.Mars && gc.round()>740) DESIRED_WORKERS = 400;
 
@@ -963,6 +966,17 @@ public class Player {
                     if (gc.canAttack(id, nid)) {
                         gc.attack(id, nid);
                         attacking = true;
+                    }
+
+                    // move away
+                    if(neighbor.unitType()!=UnitType.Ranger) {
+                        long nRange = neighbor.attackRange();
+                        if(rloc.distanceSquaredTo(neighbor.location().mapLocation())<=nRange) {
+                            Direction ndir = rloc.directionTo(neighbor.location().mapLocation());
+                            Direction odir = bc.bcDirectionOpposite(ndir);
+                            if (gc.isMoveReady(id) && gc.canMove(id, odir))
+                                gc.moveRobot(id, odir);
+                        }
                     }
                 }
             }
