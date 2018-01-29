@@ -740,7 +740,7 @@ public class Player {
                 wantFactory = false;
             }
 
-            if (gc.round() > 200 && ledger.numRockets < 10 && ((gc.round() > 55 + lastRocketRound) || gc.round() > 675 || numBaseRangers>5)) {
+            if (gc.round() > 200 && ledger.numRockets < 10 && ((gc.round() > 75 + lastRocketRound) || gc.round() > 675 || numBaseRangers>7)) {
                 wantRocket = true;
             }
             else {
@@ -1060,6 +1060,8 @@ public class Player {
                         else if(dsq<=2 && gc.canLoad(target.id(), id)) {
                             gc.load(target.id(), id);
                             unitMap[rloc.getX()][rloc.getY()] = null;
+                            baseRangers.remove(id);
+                            --numBaseRangers;
                             return;
                         }
                     }
