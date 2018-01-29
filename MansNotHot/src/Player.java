@@ -740,7 +740,7 @@ public class Player {
                 wantFactory = false;
             }
 
-            if (gc.round() > 200 && ledger.numRockets < 10 && ((gc.round() > 75 + lastRocketRound) || gc.round() > 675 || numBaseRangers>7)) {
+            if (gc.round() > 200 && ledger.numRockets < 10 && ((gc.round() > 75 + lastRocketRound) || gc.round() > 675 || (numBaseRangers>7 && (gc.round() > 35 + lastRocketRound)))) {
                 wantRocket = true;
             }
             else {
