@@ -483,7 +483,7 @@ public class Player {
     int rangerCounter;
     HashSet<Integer> wrockets;
     int numBaseRangers;
-
+    double DESIRED_WORKERS_ADD, DESIRED_WORKERS_INC;
     public MapLocation randomMarsLoc() {
         int x = rnd.nextInt(width);
         int y = rnd.nextInt(height);
@@ -547,6 +547,7 @@ public class Player {
         baseRangers = new HashSet<>();
         rangerCounter = 0;
         numBaseRangers = 0;
+        DESIRED_WORKERS_ADD = 0;
         for (int i = 0; i < width; ++i) {
             for (int j = 0; j < height; ++j) {
                 ArrayList<MapLocation> nearby = new ArrayList<>();
@@ -563,9 +564,24 @@ public class Player {
         }
 
         // consider map size
-        if(planet==Planet.Earth) DESIRED_WORKERS = (((int)Math.sqrt(width * height)) + 10)/6;
+        double mapsize = Math.sqrt(width*height);
+        if(planet==Planet.Earth) DESIRED_WORKERS = (((int)mapsize) + 10)/6;
         else DESIRED_WORKERS = 5;
-
+        DESIRED_WORKERS_ADD = DESIRED_WORKERS;
+        //
+        if(mapsize<25) {
+            DESIRED_WORKERS_INC = 0.6;
+        } else if(mapsize<30) {
+            DESIRED_WORKERS_INC = 0.8;
+        } else if(mapsize<35) {
+            DESIRED_WORKERS_INC = 1.2;
+        } else if(mapsize<40) {
+            DESIRED_WORKERS_INC = 1.6;
+        } else if(mapsize<45) {
+            DESIRED_WORKERS_INC = 2.2;
+        } else {
+            DESIRED_WORKERS_INC = 3;
+        }
 
         research();
         updateState();
@@ -589,8 +605,13 @@ public class Player {
 
     public void updateState() {
 
-        if(planet == Planet.Earth && gc.round()<60 && gc.round()%10==0) DESIRED_WORKERS += 2;
-        if(planet == Planet.Mars && gc.round()>740) DESIRED_WORKERS = 400;
+        if(planet==Planet.Earth) {
+            if(gc.round()<60 && gc.round()%10==0) {
+                DESIRED_WORKERS_ADD += DESIRED_WORKERS_INC;
+                DESIRED_WORKERS = (int)DESIRED_WORKERS_ADD;
+            }
+        }
+        else if(planet == Planet.Mars && gc.round()>740) DESIRED_WORKERS = 400;
 
         VecUnit allUnits = gc.units();
         int round = (int) gc.round();
@@ -719,7 +740,7 @@ public class Player {
                 wantFactory = false;
             }
 
-            if (gc.round() > 200 && ((gc.round() > 55 + lastRocketRound) || gc.round() > 675 || numBaseRangers>5)) {
+            if (gc.round() > 200 && ledger.numRockets < 10 && ((gc.round() > 55 + lastRocketRound) || gc.round() > 675 || numBaseRangers>5)) {
                 wantRocket = true;
             }
             else {
@@ -862,7 +883,11 @@ public class Player {
                 cutoff = 190;
             if (wantFactory)
                 cutoff = 240;
-            if (gc.karbonite() >= cutoff && gc.canProduceRobot(id, UnitType.Ranger) && ledger.numRangers < DESIRED_RANGERS) {
+            if(ledger.numWorkers<5 && gc.canProduceRobot(id, UnitType.Worker)) {
+                gc.produceRobot(id, UnitType.Worker);
+                ++ledger.numWorkers;
+            }
+            else if (gc.karbonite() >= cutoff && gc.canProduceRobot(id, UnitType.Ranger) && ledger.numRangers < DESIRED_RANGERS) {
                 gc.produceRobot(id, UnitType.Ranger);
                 ++ledger.numRangers;
             }
@@ -886,7 +911,7 @@ public class Player {
             if (u.structureIsBuilt() == 0)
                 return;
             if (planet == Planet.Earth) {
-                if (u.structureGarrison().size() < u.structureMaxCapacity() && gc.round() < 748)
+                if (u.structureGarrison().size() < u.structureMaxCapacity() && gc.round() < 748 && u.health()>0.6*u.maxHealth())
                     return;
                 MapLocation launchLocation = randomMarsLoc();
                 gc.launchRocket(u.id(), launchLocation);
